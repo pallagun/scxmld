@@ -16,6 +16,6 @@
 
 (cl-defmethod scxmld-render ((diagram 2dd-diagram))
   "Render the scxmld diagram."
-  (2dd-render diagram #'scxml-children))
+  (2dd-render-all diagram #'scxml-children))
 
 (provide 'scxmld-diagram)

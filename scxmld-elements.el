@@ -9,9 +9,38 @@
 (require 'scxml)
 (require 'scxmld-element)
 
+(defface scxmld-edit-idx
+  '((t :foreground "yellow"))
+  "Edit idx style for any drawing."
+  :group 'scxmld-faces)
+
+(defface scxmld-scxml-outline
+  '((t :foreground "orange"))
+  "scxmld-scxml outlines style."
+  :group 'scxmld-faces)
+
+
 ;; Drawable elements
-(defclass scxmld-scxml (scxml-scxml 2dd-rect scxmld-element)
+(defclass scxmld-scxml (2dd-rect scxml-scxml scxmld-element)
   ())
+(cl-defmethod make-instance ((class (subclass scxmld-scxml)) &rest slots)
+  "Ensure the drawing label matches the <scxml> element's name attribute."
+  (let ((name (plist-get slots :name))
+        (instance (cl-call-next-method)))
+    (when name
+      (2dd-set-label instance name))
+    instance))
+(cl-defmethod 2dd-render ((rect scxmld-scxml) scratch x-transformer y-transformer &rest style-plist)
+  (cl-call-next-method rect
+                       scratch
+                       x-transformer
+                       y-transformer
+                       :outline-style 'scxmld-scxml-outline
+                       :edit-idx-style 'scxmld-edit-idx))
+
+(cl-defmethod scxml-set-name :after ((element scxmld-scxml) value)
+  "Set the scxml-drawing label to match ELEMENT's new name VALUE."
+  (2dd-set-label element value))
 
 (defclass scxmld-state (scxml-state 2dd-rect scxmld-element)
   ())

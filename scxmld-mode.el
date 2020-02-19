@@ -49,6 +49,7 @@
                                :canvas canvas
                                :viewport viewport))
          (buffer (get-buffer-create (format "*SCXML:%s*" name))))
+    (2dd-set-edit-idx root-element 3)
     (switch-to-buffer buffer)
     (scxmld-mode)
     (scxmld-plot diagram)
