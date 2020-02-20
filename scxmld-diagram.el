@@ -4,7 +4,11 @@
 
 
 (defclass scxmld-diagram (2dd-diagram)
-  ()
+  ((marked-element :initarg :marked-element
+                   :initform nil
+                   :reader scxmld-get-marked
+                   :writer scxmld-set-marked
+                   :type (or null scxmld-element)))
   :documentation "An scxml diagram")
 
 (cl-defmethod scxmld-plot ((diagram 2dd-diagram))
