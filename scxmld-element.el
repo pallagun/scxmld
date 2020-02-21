@@ -55,5 +55,6 @@
   (unless (or (eq value nil) (eq value t))
     (error "Highlight values must be strictly 't or 'nil")))
 
+
 (provide 'scxmld-element)
 ;;; scxmld-element.el ends here
