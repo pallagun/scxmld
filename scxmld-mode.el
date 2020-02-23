@@ -207,9 +207,14 @@ Current implementation only regards LAST-DRAG."
 
       ;; this was not a click on a currently marked elements edit idx
       ;; points.  Select whatever element was at the point.
-      (scxmld-set-marked scxmld--diagram
-                         (scxmld-find-drawing-selection scxmld--diagram
-                                                        selection-area)))
+      (let ((selected-element (scxmld-find-drawing-selection scxmld--diagram
+                                                             selection-area)))
+        ;; even if selected-element is nil, still mark it.  That'll
+        ;; just clear the mark.
+        (scxmld-set-marked scxmld--diagram
+                           selected-element)
+        (when selected-element
+          (2dd-set-edit-idx selected-element nil))))
     (scxmld-rerender)))
 (defun scxmld-toggle-edit-idx-mode (&optional force-on)
   "Enable edit idx mode to modify a drawing."
