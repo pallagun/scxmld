@@ -16,7 +16,7 @@
   :group 'scxmld-faces)
 
 (defface scxmld-scxml-outline
-  '((t :foreground "orange-red"))
+  '((t :foreground "orange"))
   "scxmld-scxml outlines style."
   :group 'scxmld-faces)
 

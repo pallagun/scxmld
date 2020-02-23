@@ -1,8 +1,13 @@
 
 
+(defsubst scxmld-error (msg)
+  "Call scxmld-log with MSG and a level of 'error."
+  (scxmld-log msg 'error))
 (defun scxmld-log (msg &optional level)
   "Inform the user about MSG with severity level LEVEL."
-  (message msg))
+  (message (format "%s: %s"
+                   level
+                   msg)))
 
 (require 'scxmld-element)
 (require 'scxmld-elements)
