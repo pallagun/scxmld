@@ -7,6 +7,8 @@
 
 (defvar-local scxmld-diagram-link nil
   "Indicates, for an xml buffer, which scxmld-diagram object it is linked to.")
+(defconst scxmld-diagram-linked-xml-idle 0.5
+  "Amount of idle time to wait before updating the linked xml document.")
 
 (defclass scxmld-diagram (2dd-diagram)
   ((marked-element :initform nil
@@ -16,7 +18,13 @@
    (linked-xml-buffer :initform nil
                       :reader scxmld-get-linked-xml-buffer
                       :writer scxmld-set-linked-xml-buffer
-                      :type (or null buffer)))
+                      :type (or null buffer))
+   (queued-xml-updates :initform nil
+                       :reader scxmld-get-queued-xml-updates
+                       :type (or null list))
+   (queued-xml-timer :initform nil
+                     :reader scxmld-get-queued-xml-timer
+                     :writer scxmld-set-queued-xml-timer))
   :documentation "An scxml diagram")
 
 (cl-defmethod scxmld-set-marked :before ((this scxmld-diagram) value)
@@ -96,10 +104,52 @@ made."
           (if edited-geometry
               ;; TODO - make sure edited geometry doesn't clash with any siblings
               (progn (2dd-set-geometry marked-element edited-geometry)
-                     (scxmld--update-linked-xml diagram marked-element t)
+                     (scxmld--queue-update-linked-xml diagram marked-element t)
                      t)
             nil))
       nil)))
+(cl-defmethod scxmld--queue-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children)
+  "Debounce diagram updates to xml."
+  (push `(,changed-element ,include-children) (oref diagram queued-xml-updates))
+
+  (unless (scxmld-get-queued-xml-timer diagram)
+    (scxmld-set-queued-xml-timer
+     diagram
+     (run-with-idle-timer scxmld-diagram-linked-xml-idle
+                          nil
+                          #'scxmld--run-queued-linked-xml-updates
+                          diagram))))
+(cl-defmethod scxmld--run-queued-linked-xml-updates ((diagram scxmld-diagram))
+  "Run all queued linked xml updates."
+  ;; first, take care of the timer.
+  (cancel-timer (scxmld-get-queued-xml-timer diagram))
+  (scxmld-set-queued-xml-timer diagram nil)
+
+  ;; now, filter updates:
+  ;; Update filtering is currently only a repeat compressor.  this
+  ;; could be made more intelligent but I think a repeat compressor is
+  ;; likely all that is needed.
+  (let ((unfiltered-updates (nreverse (scxmld-get-queued-xml-updates diagram)))
+        (updates))
+    (cl-loop for update in unfiltered-updates
+             for update-element = (car update)
+             for last-update-element = (car (first updates))
+             do (if (eq update-element last-update-element)
+                    ;; repeated update - condense them
+                    (let ((include-children (cdr update))
+                          (last-include-children (cdr (first updates))))
+                      (setcdr (first updates)
+                              (or include-children last-include-children)))
+                  ;; new update, push it on.
+                  (push update updates)))
+    ;; (message (format "got %d updates down to %d"
+    ;;                  (length unfiltered-updates)
+    ;;                  (length updates)))
+    (mapc (lambda (changed-element-and-include-children)
+            (scxmld--update-linked-xml diagram
+                                       (car changed-element-and-include-children)
+                                       (cdr changed-element-and-include-children)))
+          updates)))
 (cl-defmethod scxmld--update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children start-at-point)
   "Given a DIAGRAM and a newly updated CHANGED-ELEMENT, update the linked xml buffer.
 
