@@ -112,7 +112,9 @@ It is assumed that xmltok has already been initialized for this buffer."
 
         (let ((tag (scxmld--xmltok-find-element changed-element t)))
           (if tag
-              (scxmld-update-attributes tag (scxml-xml-attributes changed-element))
+              (progn
+                (scxmld-update-attributes tag (scxml-xml-attributes changed-element))
+                (setq tag (scxmld--refresh tag)))
 
             ;; unable to find element, must add it.
             (let ((parent-range (scxmld--xmltok-find-element
