@@ -7,15 +7,8 @@
 (require 'scxmld-diagram)
 (require 'scxmld-elements)
 
-(defvar scxmld--diagram nil
+(defvar-local scxmld--diagram nil
   "Buffer local variable holding the diagram data for rendering.")
-(make-variable-buffer-local 'scxmld--diagram)
-(defvar scxmld--last-click-pixel 'nil
-  "Holds the location of the last 'clicked' pixel.
-
-This could either be a mouse click or a current cursor position
-select.")
-(make-variable-buffer-local 'scxmld--last-click-pixel)
 
 (defvar scxmld---debug 't
   "Display or do not display scxml diagram debugging information.")
@@ -84,12 +77,27 @@ select.")
          (diagram (scxmld-diagram :root root-element
                                   :canvas canvas
                                   :viewport viewport))
-         (buffer (get-buffer-create (format "*SCXML:%s*" name))))
+         (buffer (get-buffer-create (format "*SCXML:%s*" name)))
+         (link-buffer (get-buffer-create (format "*scxml*%s.xml" name))))
+    (switch-to-buffer link-buffer)
+    (split-window-right)
     (switch-to-buffer buffer)
     (setq-local scxmld--diagram diagram)
     (scxmld-mode)
     (scxmld-plot diagram)
-    (scxmld-render diagram)))
+    (scxmld-render diagram)
+    (scxmld-set-linked-xml-buffer diagram link-buffer)
+    (scxmld-initialize-linked-xml-buffer diagram)))
+
+(defun scxmld-write-diagram (&optional buffer-or-buffer-name)
+  "Write out the <scxml> of the current diagram to a new buffer."
+  (interactive)
+  (let ((root-element (2dd-get-root scxmld--diagram))
+        (buffer (get-buffer-create "*scxmld-diagram-output*")))
+    (switch-to-buffer buffer)
+    (delete-region (point-min) (point-max))
+    (xml-mode)
+    (insert (scxml-xml-string root-element))))
 
 (cl-defmethod scxmld-goto-point ((point 2dg-point))
   "Move cursor to where POINT is."
@@ -226,7 +234,7 @@ Current implementation only regards LAST-DRAG."
     (scxmld-rerender)))
 
 (defun scxmld-modify (x-scratch y-scratch)
-  (when (scxmld--modify scxmld--diagram x-scratch y-scratch)
+  (when (scxmld-modify-drawing scxmld--diagram x-scratch y-scratch)
     (scxmld-rerender)))
 (defun scxmld-modify-up ()
   (interactive)

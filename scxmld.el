@@ -1,4 +1,5 @@
 
+;;; Code:
 
 (defsubst scxmld-error (msg)
   "Call scxmld-log with MSG and a level of 'error."
@@ -12,7 +13,9 @@
 (require 'scxmld-element)
 (require 'scxmld-elements)
 (require 'scxmld-diagram)
+(require 'scxmld-xml)
 (require 'scxmld-mode)
 
 
 (provide 'scxmld)
+;;; scxmld.el ends here

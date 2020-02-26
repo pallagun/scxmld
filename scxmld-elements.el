@@ -26,7 +26,7 @@
   :group 'scxmld-faces)
 
 ;; Drawable elements
-(defclass scxmld-scxml (2dd-rect scxml-scxml scxmld-element scxmld-with-highlight)
+(defclass scxmld-scxml (2dd-rect scxmld-element scxml-scxml scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-scxml))
   "Pretty print this <scxml> ELEMENT."

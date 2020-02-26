@@ -8,6 +8,10 @@
 (require 'scxml)
 (require '2dd)
 
+(defconst scxmld-drawing-attribute "scxml---drawing"
+  "The xml attribute name used to save scxmld drawing information
+in an xml document.")
+
 (defclass scxmld-element (scxml-element 2dd-drawing)
   ()
   :abstract 't
@@ -17,6 +21,21 @@
 (defsubst scxmld-element-class-p (any)
   "Equivalent of (object-of-class-p ANY 'scxml-drawable-element)."
   (object-of-class-p any 'scxmld-element))
+(cl-defmethod scxml-xml-attributes ((element scxmld-element))
+  "Return the xml attributes for ELEMENT, a drawing with a geometry attribute.
+
+This function contains a hack to force all symbols to strings.  See todo to correct this."
+  (nconc (mapcar (lambda (entry)
+                   ;; TODO - this is a hack.  this package should not
+                   ;; be coalescing symbols to string.  The underlying
+                   ;; package ('scxml) should be returing names, not
+                   ;; symbols.  I think that symbol idea was an error.
+                   (let ((key (car entry)))
+                     (cons (if (symbolp key) (symbol-name key) key)
+                           (cdr entry))))
+                 (cl-call-next-method))
+         (list (cons scxmld-drawing-attribute
+                     (prin1-to-string (2dd-geometry element))))))
 (defclass scxmld-synthetic-element (scxml--core-nil scxml-element 2dd-drawing)
   ()
   :documentation "This class signifies that the object which is
