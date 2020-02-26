@@ -25,15 +25,7 @@ in an xml document.")
   "Return the xml attributes for ELEMENT, a drawing with a geometry attribute.
 
 This function contains a hack to force all symbols to strings.  See todo to correct this."
-  (nconc (mapcar (lambda (entry)
-                   ;; TODO - this is a hack.  this package should not
-                   ;; be coalescing symbols to string.  The underlying
-                   ;; package ('scxml) should be returing names, not
-                   ;; symbols.  I think that symbol idea was an error.
-                   (let ((key (car entry)))
-                     (cons (if (symbolp key) (symbol-name key) key)
-                           (cdr entry))))
-                 (cl-call-next-method))
+  (nconc (cl-call-next-method)
          (list (cons scxmld-drawing-attribute
                      (prin1-to-string (2dd-geometry element))))))
 (defclass scxmld-synthetic-element (scxml--core-nil scxml-element 2dd-drawing)

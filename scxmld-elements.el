@@ -19,6 +19,10 @@
   '((t :foreground "orange"))
   "scxmld-scxml outlines style."
   :group 'scxmld-faces)
+(defface scxmld-state-outline
+  '((t :foreground "gold"))
+  "scxmld-scxml outlines style."
+  :group 'scxmld-faces)
 
 (defface scxmld-outline-marked
   '((t :foreground "green"))
@@ -54,8 +58,34 @@
   "Set the scxml-drawing label to match ELEMENT's new name VALUE."
   (2dd-set-label element value))
 
-(defclass scxmld-state (scxml-state 2dd-rect scxmld-element)
+(defclass scxmld-state (2dd-rect scxmld-element scxml-state scxmld-with-highlight)
   ())
+(cl-defmethod scxmld-pprint ((element scxmld-state))
+  "Pretty print this <state> ELEMENT."
+  (format "state[name:%s,[%s] %s]"
+          (scxml-get-id element)
+          (if (scxmld-get-highlight element) "H" "")
+          (2dd-pprint element)))
+(cl-defmethod make-instance ((class (subclass scxmld-state)) &rest slots)
+  "Ensure the drawing label matches the <state> element's id attribute."
+  (let ((id (plist-get slots :id))
+        (instance (cl-call-next-method)))
+    (when name
+      (2dd-set-label instance id))
+    instance))
+(cl-defmethod 2dd-render ((rect scxmld-state) scratch x-transformer y-transformer &rest style-plist)
+  (cl-call-next-method rect
+                       scratch
+                       x-transformer
+                       y-transformer
+                       :outline-style (if (scxmld-get-highlight rect)
+                                          'scxmld-outline-marked
+                                        'scxmld-state-outline)
+                       :edit-idx-style 'scxmld-edit-idx))
+(cl-defmethod scxml-set-id :after ((element scxmld-state) value)
+  "Set the scxml-drawing label to match ELEMENT's new id VALUE."
+  (2dd-set-label element value))
+
 
 
 ;; (defun scxmld-element-factory (type attrib-alist)
