@@ -79,6 +79,7 @@
                                   :viewport viewport))
          (buffer (get-buffer-create (format "*SCXML:%s*" name)))
          (link-buffer (get-buffer-create (format "*scxml*%s.xml" name))))
+    (delete-other-windows)
     (switch-to-buffer link-buffer)
     (split-window-right)
     (switch-to-buffer buffer)
