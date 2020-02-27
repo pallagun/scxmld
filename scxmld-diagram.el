@@ -212,7 +212,8 @@ It is assumed that xmltok has already been initialized for this buffer."
 
               ;; update all the children or create them if they're new.
               (cl-loop for child in child-elements
-                       do (scxmld-update-linked-xml diagram child t t)))))))))
+                       ;; TODO: change that last nil back to a t when debugging is easier.
+                       do (scxmld-update-linked-xml diagram child t nil)))))))))
 
 ;; actions
 (cl-defgeneric scxmld-plot ((diagram scxmld-diagram))
@@ -237,15 +238,22 @@ PRESERVE-PREDICATE defaults to preserving all drawings."
 Return non-nil if update completes.  Update may not complete.")
 (cl-defmethod scxmld-update-drawing ((diagram scxmld-diagram) (element scxmld-element) updated-geometry)
   "Update ELEMENT in DIAGRAM to have UPDATED-GEOMETRY.
-Return non-nil if update completes.  Update may not complete."
-  (let ((parent (scxml-parent element)))
-    (if (or (not parent)                ;don't validate if you are the root element.
-            (2dd-validate-containment parent
-                                      (scxml-siblings element)
-                                      updated-geometry))
-      (progn (2dd-update-plot element updated-geometry #'scxml-children)
-             t)
-    nil)))
+Return non-nil if update completes, nil otherwise.  Update may
+not complete."
+  (let ((parent (scxml-parent element))
+        (siblings (scxml-siblings element)))
+    (2dd-update-plot element
+                     updated-geometry
+                     #'scxml-children
+                     parent
+                     siblings)))
+    ;; (if (or (not parent)                ;don't validate if you are the root element.
+    ;;         (2dd-validate-containment parent
+    ;;                                   (scxml-siblings element)
+    ;;                                   updated-geometry))
+    ;;   (progn (2dd-update-plot element updated-geometry #'scxml-children)
+    ;;          t)
+    ;; nil)))
 
 (cl-defmethod scxmld-render ((diagram scxmld-diagram))
   "Render the scxmld diagram."
