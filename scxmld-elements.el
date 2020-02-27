@@ -70,7 +70,7 @@
   "Ensure the drawing label matches the <state> element's id attribute."
   (let ((id (plist-get slots :id))
         (instance (cl-call-next-method)))
-    (when name
+    (when id
       (2dd-set-label instance id))
     instance))
 (cl-defmethod 2dd-render ((rect scxmld-state) scratch x-transformer y-transformer &rest style-plist)

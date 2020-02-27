@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 
 ;;; Code:
 
@@ -9,6 +10,13 @@
   "Indicates, for an xml buffer, which scxmld-diagram object it is linked to.")
 (defconst scxmld-diagram-linked-xml-idle 0.5
   "Amount of idle time to wait before updating the linked xml document.")
+
+(defconst scxmld-plot-settings
+  (list :sibling-margin-vertical 6
+        :sibling-margin-horizontal 10
+        :inner-padding-horizontal 3
+        :inner-padding-vertical 2)
+  "Default plot settings.")
 
 (defclass scxmld-diagram (2dd-diagram)
   ((marked-element :initform nil
@@ -103,22 +111,33 @@ made."
                                                                   delta))))
           (if edited-geometry
               ;; TODO - make sure edited geometry doesn't clash with any siblings
-              (progn (2dd-set-geometry marked-element edited-geometry)
+              (progn (scxmld-update-drawing diagram marked-element edited-geometry)
                      (scxmld--queue-update-linked-xml diagram marked-element t)
                      t)
             nil))
       nil)))
+(cl-defmethod scxmld-add-child ((diagram scxmld-diagram) (parent scxmld-element) (new-child scxmld-element))
+  "Add NEW-CHILD to PARENT in DIAGRAM."
+  (let ((success))
+    (condition-case err
+        (progn
+          (scxml-validate-add-child parent new-child)
+          (scxml-add-child parent new-child t)
+          (scxmld--queue-update-linked-xml diagram parent t)
+          (setq success t))
+      (error (scxmld-log (format "Unable to add child: %s" err) 'error)))
+    success))
 (cl-defmethod scxmld--queue-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children)
   "Debounce diagram updates to xml."
   (push `(,changed-element ,include-children) (oref diagram queued-xml-updates))
-
   (unless (scxmld-get-queued-xml-timer diagram)
     (scxmld-set-queued-xml-timer
      diagram
      (run-with-idle-timer scxmld-diagram-linked-xml-idle
                           nil
                           #'scxmld--run-queued-linked-xml-updates
-                          diagram))))
+                          diagram)))
+  )
 (cl-defmethod scxmld--run-queued-linked-xml-updates ((diagram scxmld-diagram))
   "Run all queued linked xml updates."
   ;; first, take care of the timer.
@@ -146,11 +165,11 @@ made."
     ;;                  (length unfiltered-updates)
     ;;                  (length updates)))
     (mapc (lambda (changed-element-and-include-children)
-            (scxmld--update-linked-xml diagram
-                                       (car changed-element-and-include-children)
-                                       (cdr changed-element-and-include-children)))
+            (scxmld-update-linked-xml diagram
+                                      (car changed-element-and-include-children)
+                                      (cdr changed-element-and-include-children)))
           updates)))
-(cl-defmethod scxmld--update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children start-at-point)
+(cl-defmethod scxmld-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children start-at-point)
   "Given a DIAGRAM and a newly updated CHANGED-ELEMENT, update the linked xml buffer.
 
 It is assumed that xmltok has already been initialized for this buffer."
@@ -168,11 +187,12 @@ It is assumed that xmltok has already been initialized for this buffer."
 
             ;; unable to find element, must add it.
             (let ((parent-range (scxmld--xmltok-find-element
-                                 (scxmld-parent changed-element))))
+                                 (scxml-parent changed-element))))
               ;; Insert just this parent tag, I'll recurse to add children.
               (setq tag
-                    (scxml-insert-new-child parent-range
-                                            (scxml-xml-string changed-element t)))))
+                    (scxmld-add-child parent-range
+                                      (scxml-xml-string changed-element t)
+                                      changed-element))))
           (scxmld-mark tag changed-element)
 
           ;; tag can now be trusted - handle children
@@ -192,15 +212,41 @@ It is assumed that xmltok has already been initialized for this buffer."
 
               ;; update all the children or create them if they're new.
               (cl-loop for child in child-elements
-                       do (scxmld--update-linked-xml diagram child t t)))))))))
+                       do (scxmld-update-linked-xml diagram child t t)))))))))
 
 ;; actions
+(cl-defgeneric scxmld-plot ((diagram scxmld-diagram))
+  "Plot drawings for this DIAGRAM.")
 (cl-defmethod scxmld-plot ((diagram scxmld-diagram))
-  "Plot drawings for this diagram."
+  "Plot drawings for this DIAGRAM.
+
+PRESERVE-PREDICATE must be a function and will be called
+as (preserve-predicate drawing) to determine if the drawing
+should be preserved or replotted.
+
+PRESERVE-PREDICATE defaults to preserving all drawings."
   (2dd-plot (2dd-get-root diagram)
             (2dd-get-canvas diagram)
             #'scxml-children
-            (lambda (_) t)))
+            (lambda (_) t)
+            scxmld-plot-settings))
+
+(cl-defgeneric scxmld-update-drawing ((diagram scxmld-diagram) (element scxmld-element) updated-geometry)
+  "Update ELEMENT in DIAGRAM to have UPDATED-GEOMETRY.
+
+Return non-nil if update completes.  Update may not complete.")
+(cl-defmethod scxmld-update-drawing ((diagram scxmld-diagram) (element scxmld-element) updated-geometry)
+  "Update ELEMENT in DIAGRAM to have UPDATED-GEOMETRY.
+Return non-nil if update completes.  Update may not complete."
+  (let ((parent (scxml-parent element)))
+    (if (or (not parent)                ;don't validate if you are the root element.
+            (2dd-validate-containment parent
+                                      (scxml-siblings element)
+                                      updated-geometry))
+      (progn (2dd-update-plot element updated-geometry #'scxml-children)
+             t)
+    nil)))
+
 (cl-defmethod scxmld-render ((diagram scxmld-diagram))
   "Render the scxmld diagram."
   (2dd-render-all diagram #'scxml-children))

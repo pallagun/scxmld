@@ -30,10 +30,12 @@
     (define-key map (kbd "M-p") 'scxmld-modify-up)
     (define-key map (kbd "M-n") 'scxmld-modify-down)
 
-    (define-key map (kbd "g") 'scxmld-rerender)
+    (define-key map (kbd "g") 'scxmld-rerender-and-refresh-xml)
     (define-key map (kbd "G") 'scxmld-pan-zoom-reset)
     (define-key map (kbd "+") 'scxmld-zoom-in)
     (define-key map (kbd "-") 'scxmld-zoom-out)
+
+    (define-key map (kbd "C-c a S") 'scxmld-add-child-state-to-marked)
 
     ;; mouse handler routing.
     (define-key map (kbd "<mouse-1>") #'2dd-mouse-handler)
@@ -138,13 +140,20 @@
            (scxmld-goto-point (2dd-edit-idx-point marked-element edit-idx))
          (scxmld-goto-pixel (symbol-value position-sym))))
      (symbol-value value-sym)))
-(defsubst scxmld-rerender ()
-  "Rerender (but not replot) the current diagram."
+(defun scxmld-rerender-and-refresh-xml (&optional replot)
+  "Rerender (optionally REPLOT) and refresh linked xml."
   (interactive)
+  (scxmld-rerender replot)
+  (scxmld-update-linked-xml scxmld--diagram
+                            (2dd-get-root scxmld--diagram)
+                            t))
+(defsubst scxmld-rerender (&optional replot)
+  "Rerender the current diagram, optionall REPLOT if non-nil."
+  (when replot
+    (scxmld-plot scxmld--diagram))
   (let ((current-point (point)))
     (delete-region (point-min) (point-max))
     (scxmld-render scxmld--diagram)
-
     (let* ((marked-element (scxmld-get-marked scxmld--diagram))
            (edit-idx (and marked-element (2dd-get-edit-idx marked-element))))
       (if edit-idx
@@ -318,6 +327,19 @@ Current implementation only regards LAST-DRAG."
   "Zoom out on the current viewport"
   (interactive)
   (scxmld-zoom 0.95))
+
+(defun scxmld-add-child-to-marked (new-element)
+  "Add NEW-ELEMENT to the currently marked element."
+  (when
+      (scxmld-add-child scxmld--diagram
+                        (scxmld-get-marked scxmld--diagram)
+                        new-element)
+    (scxmld-rerender t)))
+
+(defun scxmld-add-child-state-to-marked (id)
+  "Add a child state with ID to marked element."
+  (interactive "sNew <state> id: ")
+  (scxmld-add-child-to-marked (scxmld-state :id id)))
 
 (provide 'scxmld-mode)
 ;;; scxmld-mode.el ends here
