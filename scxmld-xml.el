@@ -184,7 +184,7 @@ buffer."
             (child-tag (scxmld-xmltok-after)))
         (while (and child-tag
                     (< (scxmld-start child-tag) end-point))
-          (when (and (memq (scxml-type child-tag)
+          (when (and (memq (scxmld-type child-tag)
                            '(start-tag empty-element))
                      (scxmld-get-mark child-tag))
             (push child-tag children))
@@ -342,7 +342,7 @@ Returns an scxmld-xmltok of the added CHILD."
     (let ((insert-end (point)))
       (indent-region insert-start (1+ (point))))
     (goto-char insert-start)
-    (scxml-xmltok-after)))
+    (scxmld-xmltok-after)))
 
 ;; document linking
 
