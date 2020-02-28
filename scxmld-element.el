@@ -27,7 +27,7 @@ in an xml document.")
 This function contains a hack to force all symbols to strings.  See todo to correct this."
   (nconc (cl-call-next-method)
          (list (cons scxmld-drawing-attribute
-                     (prin1-to-string (2dd-geometry element))))))
+                     (2dd-serialize-geometry element)))))
 (defclass scxmld-synthetic-element (scxml--core-nil scxml-element 2dd-drawing)
   ()
   :documentation "This class signifies that the object which is
