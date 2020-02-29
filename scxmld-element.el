@@ -49,7 +49,6 @@ Current special attributes:
   ;; that's accurate I'm not sure if it's the best approach.
   (let ((attributes (scxml-xml-attributes element)))
     (alist-get attribute-name attributes nil nil #'equal)))
-
 (cl-defgeneric scxmld-put-attribute ((element scxmld-element) (attribute-name string) attribute-value)
   "Set ELEMENT's attribute named ATTRIBUTE-NAME to be ATTRIBUTE-VALUE.
 
