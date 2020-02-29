@@ -116,6 +116,18 @@ made."
                      t)
             nil))
       nil)))
+(cl-defmethod scxmld-modify-attribute ((diagram scxmld-diagram) (attribute-name string) attribute-value)
+  "Modify the ATTRIBUTE-NAME'd attribute to be ATTRIBUTE-VALUE of the marked drawing in DIAGRAM.
+
+Setting ATTRIBUTE-VALUE to nil should cause the attribute to be deleted."
+  (let ((marked-element (scxmld-get-marked diagram)))
+    (if (null marked-element)
+        ;; No element, nothing to update
+        nil
+      ;; Element marked, update the attribute.
+      (scxmld-put-attribute marked-element attribute-name attribute-value)
+      (scxmld--queue-update-linked-xml diagram marked-element t)
+      t)))
 (cl-defmethod scxmld-add-child ((diagram scxmld-diagram) (parent scxmld-element) (new-child scxmld-element))
   "Add NEW-CHILD to PARENT in DIAGRAM."
   (let ((success))
@@ -142,7 +154,7 @@ made."
       (scxmld--queue-update-linked-xml diagram parent t)
       t)))
 
-
+;; XML update handling.
 (cl-defmethod scxmld--queue-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children)
   "Debounce diagram updates to xml."
   (push `(,changed-element ,include-children) (oref diagram queued-xml-updates))
@@ -247,7 +259,6 @@ PRESERVE-PREDICATE defaults to preserving all drawings."
             #'scxml-children
             (lambda (_) t)
             scxmld-plot-settings))
-
 (cl-defgeneric scxmld-update-drawing ((diagram scxmld-diagram) (element scxmld-element) updated-geometry)
   "Update ELEMENT in DIAGRAM to have UPDATED-GEOMETRY.
 
@@ -263,13 +274,6 @@ not complete."
                      #'scxml-children
                      parent
                      siblings)))
-    ;; (if (or (not parent)                ;don't validate if you are the root element.
-    ;;         (2dd-validate-containment parent
-    ;;                                   (scxml-siblings element)
-    ;;                                   updated-geometry))
-    ;;   (progn (2dd-update-plot element updated-geometry #'scxml-children)
-    ;;          t)
-    ;; nil)))
 
 (cl-defmethod scxmld-render ((diagram scxmld-diagram))
   "Render the scxmld diagram."
