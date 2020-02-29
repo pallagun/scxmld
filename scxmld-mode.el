@@ -37,6 +37,7 @@
 
     (define-key map (kbd "C-d") 'scxmld-delete-marked)
     (define-key map (kbd "a S") 'scxmld-add-child-state-to-marked)
+    (define-key map (kbd "a F") 'scxmld-add-child-final-to-marked)
     (define-key map (kbd "e e") 'scxmld-edit-attribute)
 
     ;; mouse handler routing.
@@ -436,6 +437,10 @@ Note: zooming based on pixel does not yet work."
   "Add a child state with ID to marked element."
   (interactive "sNew <state> id: ")
   (scxmld-add-child-to-marked (scxmld-state :id id)))
+(defun scxmld-add-child-final-to-marked (id)
+  "Add a child final with ID to marked element."
+  (interactive "sNew <final> id: ")
+  (scxmld-add-child-to-marked (scxmld-final :id id)))
 
 (defun scxmld-delete-attribute (attribute-name)
   (interactive "sAttribute Name:")
