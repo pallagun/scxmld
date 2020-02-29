@@ -58,6 +58,21 @@
 (cl-defmethod scxml-set-name :after ((element scxmld-scxml) value)
   "Set the scxml-drawing label to match ELEMENT's new name VALUE."
   (2dd-set-label element value))
+(cl-defmethod scxmld-put-attribute ((element scxmld-scxml) (attribute-name string) attribute-value)
+  "Set ELEMENT's attribute with name ATTRIBUTE-NAME to be ATTRIBUTE-VALUE.
+
+When ATTRIBUTE-VALUE is nil the attribute will be deleted if possible.
+
+Special cases here are: name, initial, datamodel and binding."
+  (pcase attribute-name
+    ("name" (scxml-set-name element attribute-value))
+    ("initial" (scxml-set-initial element attribute-value))
+    ("datamodel" (scxml-set-datamodel element attribute-value))
+    ("binding" (scxml-set-binding element attribute-value))
+    ;; else, put it into the attrib hash.
+    (_ (if attribute-value
+           (scxml-put-attrib element attribute-name attribute-value)
+         (scxml-delete-attrib element attribute-name)))))
 
 (defclass scxmld-state (2dd-rect scxmld-element scxml-state scxmld-with-highlight)
   ())
@@ -87,6 +102,20 @@
 (cl-defmethod scxml-set-id :after ((element scxmld-state) value)
   "Set the scxml-drawing label to match ELEMENT's new id VALUE."
   (2dd-set-label element value))
+(cl-defmethod scxmld-put-attribute ((element scxmld-state) (attribute-name string) attribute-value)
+  "Set ELEMENT's attribute with name ATTRIBUTE-NAME to be ATTRIBUTE-VALUE.
+
+When ATTRIBUTE-VALUE is nil the attribute will be deleted if possible.
+
+Special cases here are: id, initial."
+  (pcase attribute-name
+    ("id" (scxml-set-id element attribute-value))
+    ("initial" (scxml-set-initial element attribute-value))
+    ;; else, put it into the attrib hash.
+    (_ (if attribute-value
+           (scxml-put-attrib element attribute-name attribute-value)
+         (scxml-delete-attrib element attribute-name)))))
+
 
 
 
