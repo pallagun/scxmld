@@ -1,7 +1,6 @@
 (require 'ert)
 (require 'scxmld-xml)
 
-
 (defun scxmld--apply-update-attributes (xml-string attributes-alist tag-fn)
   "Put xml-string into a buffer, run scxmld-update-attributes on it.
 
@@ -160,5 +159,54 @@ tag-fn will be called from the start of the buffer to get the proper tag."
                                                                       tag-fn))))
                     (scxmld---all-combinations attributes))))
           cases)))
+
+
+(defun scxmld--apply-delete (xml-string tag-fn)
+  "Put xml-string into a buffer, run scxmld-update-attributes on it.
+
+tag-fn will be called from the start of the buffer to get the proper tag."
+  (with-temp-buffer
+    (insert xml-string)
+    (goto-char (point-min))
+    (scxmld--xmltok-init)
+    (let ((tag (funcall tag-fn)))
+      (scxmld-delete tag)
+      (buffer-string))))
+(ert-deftest scxmld-delete-001 ()
+  "It should delete a single tag correctly."
+  (let ((cases (list (list :input "<scxml><state id=\"one\" /></scxml>"
+                           :expected "<scxml></scxml>")
+                     (list :input "<scxml><state id=\"one\" ></state></scxml>"
+                           :expected "<scxml></scxml>")
+                     (list :input "<scxml><state id=\"one\" ><!-- comment --></state></scxml>"
+                           :expected "<scxml></scxml>")
+                     (list :input "<scxml><state id=\"one\" >anything</state></scxml>"
+                           :expected "<scxml></scxml>")
+                     (list :input "<scxml><state id=\"one\" >\n</state>\n</scxml>"
+                           :expected "<scxml>\n</scxml>")
+                     (list :input "<scxml>  <state id=\"one\" >\n</state>\n</scxml>"
+                           :expected "<scxml>\n</scxml>")
+                     (list :input "<scxml>\n  <state id=\"one\" ></state>\n</scxml>"
+                           :expected "<scxml>\n</scxml>")
+                     (list :input "<scxml>\n  <state id=\"one\" />\n</scxml>"
+                           :expected "<scxml>\n</scxml>")
+                     (list :input "<scxml>\n<state id=\"one\" />\n</scxml>"
+                           :expected "<scxml>\n</scxml>")
+                     )))
+    (mapc (lambda (test-case)
+            (let ((input (plist-get test-case :input))
+                  (expected (plist-get test-case :expected)))
+              (should (equal (scxmld--apply-delete input
+                                                   (lambda ()
+                                                     (let ((tag (scxmld-xmltok-after)))
+                                                       (while (not (equal (scxmld-tag-name tag) "state"))
+                                                         (goto-char (scxmld-next-token-pos tag))
+                                                         (setq tag (scxmld-xmltok-after)))
+                                                       tag)))
+                             expected))))
+          cases)))
+
+
+
 
 (provide 'scxmld-xml-test)

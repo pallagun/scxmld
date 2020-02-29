@@ -240,17 +240,26 @@ This will modify the buffer and possibly invalidate other scxmld-xmltok objects!
   "Prune TAG from the current buffer.
 
 This will modify the buffer and possibly invalidate other scxmld-xmltok objects!"
-  (cond ((eq (scxmld-type tag) 'empty-element)
-         (delete-region (scxmld-start tag)
-                        (scxmld-next-token-pos tag)))
-        ((eq (scxmld-type tag) 'start-tag)
-         (let ((end-tag (scxmld-find-end tag)))
-           (unless end-tag
-             (error "Unable to prune tag[%s], unable to find end" tag))
-           (delete-region (scxmld-start tag)
-                          (scxmld-next-token-pos end-tag))))
-        (t
-         (error "Currently unable to delete this type of tag: %s" tag))))
+  (cl-labels ((forward-to-previous-newline
+               (position)
+               (let ((char-at-pos (buffer-substring (1- position) position)))
+                 (while (member char-at-pos '(" " "\t"))
+                   (incf position -1)
+                   (setq char-at-pos (buffer-substring (1- position) position)))
+                 (if (equal char-at-pos "\n")
+                     (1- position)
+                   position))))
+    (cond ((eq (scxmld-type tag) 'empty-element)
+           (delete-region (forward-to-previous-newline (scxmld-start tag))
+                          (scxmld-next-token-pos tag)))
+          ((eq (scxmld-type tag) 'start-tag)
+           (let ((end-tag (scxmld-find-end tag)))
+             (unless end-tag
+               (error "Unable to prune tag[%s], unable to find end" tag))
+             (delete-region (forward-to-previous-newline (scxmld-start tag))
+                            (scxmld-next-token-pos end-tag))))
+          (t
+           (error "Currently unable to delete this type of tag: %s" tag)))))
 (cl-defmethod scxmld-mark ((tag scxmld-xmltok) tag-value &optional goto-end-of-tag)
   "Given a TAG, mark it for TAG-VALUE."
   (let ((end-pos (scxmld-next-token-pos tag)))
