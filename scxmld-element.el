@@ -28,6 +28,37 @@ This function contains a hack to force all symbols to strings.  See todo to corr
   (nconc (cl-call-next-method)
          (list (cons scxmld-drawing-attribute
                      (2dd-serialize-geometry element)))))
+(cl-defgeneric scxmld-get-attribute ((element scxmld-element) (attribute-name string))
+  "Return the value of ELEMENT's ATTRIBUTE-NAME'd attribute.
+
+This function works regardless of the attribute being special or
+not (e.g. a <state> element's id is special and a <transition>'s
+target is special).")
+(cl-defmethod scxmld-get-attribute ((element scxmld-element) (attribute-name string))
+  "Return the value of ELEMENT's ATTRIBUTE-NAME'd attribute.
+
+Will treat special attributes the same as non-special ones.
+
+Current special attributes:
+'scxml-element-with-id (id)
+'scxml-element-with-initial (initial)l
+'scxml-scxml (name, datamodel binding)
+'scxml-transition (target, event (as 'events'), cond (as 'cond-expr'), type)
+"
+  ;; Currently this works off the xml writer's infrastructure.  While
+  ;; that's accurate I'm not sure if it's the best approach.
+  (let ((attributes (scxml-xml-attributes element)))
+    (alist-get attribute-name attributes nil nil #'equal)))
+
+(cl-defgeneric scxmld-put-attribute ((element scxmld-element) (attribute-name string) attribute-value)
+  "Set ELEMENT's attribute named ATTRIBUTE-NAME to be ATTRIBUTE-VALUE.
+
+When ATTRIBUTE-VALUE is nil the attribute will be deleted if possible.
+
+This function works regardless of the attribute being special or
+not (e.g. a <state> element's id is special and a <transition>'s
+target is special).")
+
 (defclass scxmld-synthetic-element (scxml--core-nil scxml-element 2dd-drawing)
   ()
   :documentation "This class signifies that the object which is
