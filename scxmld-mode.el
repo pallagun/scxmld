@@ -36,7 +36,8 @@
     (define-key map (kbd "-") 'scxmld-zoom-out)
 
     (define-key map (kbd "C-d") 'scxmld-delete-marked)
-    (define-key map (kbd "C-c a S") 'scxmld-add-child-state-to-marked)
+    (define-key map (kbd "a S") 'scxmld-add-child-state-to-marked)
+    (define-key map (kbd "e e") 'scxmld-edit-attribute)
 
     ;; mouse handler routing.
     (define-key map (kbd "<mouse-1>") #'2dd-mouse-handler)
@@ -226,11 +227,22 @@ Current implementation only regards LAST-DRAG."
          (refresh-menu (list "Refresh"
                              '("Rerender" . (scxmld-rerender-and-refresh-xml))
                              '("Reset Zoom" . (scxmld-pan-zoom-reset))))
-         (add-children-menu))
+         (add-children-menu)
+         (edit-attribute-menu))
     (when selection-element
       (let* ((core-type (scxml-core-type selection-element))
-             (valid-children (scxml-get-valid-child-types core-type)))
+             (valid-children (scxml-get-valid-child-types core-type))
+             (valid-attributes (mapcar #'symbol-name
+                                       (scxml-get-defined-attributes core-type))))
         (setq menu-header (format "%s menu" core-type))
+        (when valid-attributes
+          (setq edit-attribute-menu
+                (cons "Edit attribute:"
+                      (mapcar (lambda (attrib)
+                                (cons attrib
+                                      `(scxmld-mouse-begin-edit-attribute ,selection-element
+                                                                          ,attrib)))
+                        valid-attributes))))
         (when valid-children
           (setq add-children-menu
                 (cons "Add child:"
@@ -239,7 +251,7 @@ Current implementation only regards LAST-DRAG."
                                       `(scxmld-mouse-begin-add-new ,child-type)))
                               valid-children))))))
 
-    (let* ((valid-menus (seq-filter 'identity `(,add-children-menu ,refresh-menu)))
+    (let* ((valid-menus (seq-filter 'identity `(,edit-attribute-menu ,add-children-menu ,refresh-menu)))
            (selection (x-popup-menu t (cons menu-header valid-menus))))
       (when selection
         (apply (first selection) (rest selection))))))
@@ -270,6 +282,14 @@ Current implementation only regards LAST-DRAG."
       ;; TODO - this may not be a rectangle at some point.
       (2dd-set-edit-idx new-element 2))
     (scxmld-rerender t)))
+(defun scxmld-mouse-begin-edit-attribute (element-to-mark attribute-to-edit)
+  "Mark ELEMENT-TO-MARK and begin attribute editing of ATTRIBUTE-TO-EDIT."
+  (let ((currently-marked-element (scxmld-get-marked scxmld--diagram)))
+    (unless (eq element-to-mark currently-marked-element)
+      (scxmld-set-marked scxmld--diagram
+                         element-to-mark)
+      (scxmld-rerender))
+    (scxmld-edit-named-attribute attribute-to-edit)))
 
 (defun scxmld-mark-at-point ()
   "Wherever the cursor is, mark what is there."
@@ -412,11 +432,39 @@ Note: zooming based on pixel does not yet work."
                         (scxmld-get-marked scxmld--diagram)
                         new-element)
     (scxmld-rerender t)))
-
 (defun scxmld-add-child-state-to-marked (id)
   "Add a child state with ID to marked element."
   (interactive "sNew <state> id: ")
   (scxmld-add-child-to-marked (scxmld-state :id id)))
+
+(defun scxmld-delete-attribute (attribute-name)
+  (interactive "sAttribute Name:")
+  (let ((marked (scxmld-get-marked scxmld--diagram)))
+    (when marked
+      (when (scxmld-modify-attribute scxmld--diagram
+                                     attribute-name
+                                     nil)
+          (scxmld-rerender)))))
+(defun scxmld-edit-attribute (attribute-name)
+  "Edit the ATTRIBUTE-NAME named attribute of the currently marked element."
+  (interactive "sAttribute Name:")
+  (scxmld-edit-named-attribute attribute-name))
+(defun scxmld-edit-named-attribute (attribute-name)
+  "Edit an attribute with ATTRIBUTE-NAME of the currently marked element."
+  ;; use read string.
+  (let* ((marked (scxmld-get-marked scxmld--diagram))
+         (attribute-value (scxmld-get-attribute marked attribute-name)))
+    (let ((new-value (read-string (format "set %s= " attribute-name)
+                                  attribute-value)))
+      (when (not (equal new-value attribute-value))
+        (when (scxmld-modify-attribute scxmld--diagram
+                                       attribute-name
+                                       new-value)
+          (scxmld-rerender))))))
+
+
+
+
 
 (provide 'scxmld-mode)
 ;;; scxmld-mode.el ends here
