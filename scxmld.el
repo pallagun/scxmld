@@ -6,9 +6,12 @@
   (scxmld-log msg 'error))
 (defun scxmld-log (msg &optional level)
   "Inform the user about MSG with severity level LEVEL."
-  (message (format "%s: %s"
-                   level
-                   msg)))
+  (let ((route (if (eq level 'error)
+                   'error
+                 'message)))
+    (funcall route (format "%s: %s"
+                           level
+                           msg))))
 
 (require 'scxmld-element)
 (require 'scxmld-elements)
