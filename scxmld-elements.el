@@ -42,6 +42,7 @@
   "Ensure the drawing label matches the <scxml> element's name attribute."
   (let ((name (plist-get slots :name))
         (instance (cl-call-next-method)))
+    (2dd-set-constraint instance 'free)
     (when name
       (2dd-set-label instance name))
     instance))
@@ -70,6 +71,7 @@
   "Ensure the drawing label matches the <state> element's id attribute."
   (let ((id (plist-get slots :id))
         (instance (cl-call-next-method)))
+    (2dd-set-constraint instance 'captive+exclusive)
     (when id
       (2dd-set-label instance id))
     instance))

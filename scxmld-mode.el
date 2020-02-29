@@ -35,6 +35,7 @@
     (define-key map (kbd "+") 'scxmld-zoom-in)
     (define-key map (kbd "-") 'scxmld-zoom-out)
 
+    (define-key map (kbd "C-d") 'scxmld-delete-marked)
     (define-key map (kbd "C-c a S") 'scxmld-add-child-state-to-marked)
 
     ;; mouse handler routing.
@@ -53,6 +54,9 @@
     (define-key map (kbd "<down-mouse-3>") #'2dd-mouse-handler)
     (define-key map (kbd "<drag-mouse-3>") #'2dd-mouse-handler)
 
+    (define-key map (kbd "<mouse-4>") #'2dd-mouse-handler)
+    (define-key map (kbd "<mouse-5>") #'2dd-mouse-handler)
+
     map)
   "Keymap for scxml-diagram major mode")
 (defun scxmld-mode ()
@@ -67,7 +71,14 @@
   (setq 2dd-mouse-hooks '((down-mouse-1 . scxmld-mouse-mark-at-point)
                           (double-mouse-1 . scxmld-mouse-mark-and-begin-edit-at-point)
                           (drag-increment-mouse-1 . scxmld-mouse-drag-edit)
-                          (drag-increment-mouse-3 . scxmld-mouse-pan)
+
+                          (drag-increment-mouse-2 . scxmld-mouse-pan)
+
+                          ;; (down-mouse-3 . scxmld-mouse-menu)
+                          (mouse-3 . scxmld-mouse-menu)
+
+                          (mouse-4 . scxmld-mouse-zoom-in)
+                          (mouse-5 . scxmld-mouse-zoom-out)
                           (error . scxmld-error))))
 
 (defun scxmld-new-empty-diagram (name)
@@ -201,8 +212,64 @@ drag to CURRENT-PIXEL.  Presently this is ignored."
 Current implementation only regards LAST-DRAG."
   ;; Note: -1 * y coordinate is an inline pixel-to-scratch conversion.
   (scxmld-pan (* -1 (2dg-x last-drag)) (2dg-y last-drag)))
-(defun scxmld-mouse-zoom (clicked-pixel last-drag total-drag)
-  (message "I wish I could zoom..."))
+(defun scxmld-mouse-zoom-in (clicked-pixel last-drag total-drag)
+  "Handle mouse zoom in requests."
+  (scxmld-zoom-in clicked-pixel))
+(defun scxmld-mouse-zoom-out (clicked-pixel last-drag total-drag)
+  "Handle mouse zoom out requests."
+  (scxmld-zoom-out clicked-pixel))
+(defun scxmld-mouse-menu (clicked-pixel last-drag total-drag)
+  "Handle mouse menu requests."
+  (let* ((selection-area (scxmld--get-selection-rect-at-point))
+         (selection-element (scxmld-find-drawing-selection scxmld--diagram selection-area))
+         (menu-header "scxmld-mode")
+         (refresh-menu (list "Refresh"
+                             '("Rerender" . (scxmld-rerender-and-refresh-xml))
+                             '("Reset Zoom" . (scxmld-pan-zoom-reset))))
+         (add-children-menu))
+    (when selection-element
+      (let* ((core-type (scxml-core-type selection-element))
+             (valid-children (scxml-get-valid-child-types core-type)))
+        (setq menu-header (format "%s menu" core-type))
+        (when valid-children
+          (setq add-children-menu
+                (cons "Add child:"
+                      (mapcar (lambda (child-type)
+                                (cons (format "<%s>" child-type)
+                                      `(scxmld-mouse-begin-add-new ,child-type)))
+                              valid-children))))))
+
+    (let* ((valid-menus (seq-filter 'identity `(,add-children-menu ,refresh-menu)))
+           (selection (x-popup-menu t (cons menu-header valid-menus))))
+      (when selection
+        (apply (first selection) (rest selection))))))
+(defun scxmld-mouse-begin-add-new (type)
+  "Begin the new-element mouse saga."
+  (2dd-mouse-set-override 'down-mouse-1
+                          (lambda (clicked-pixel drag-pixel total-drag)
+                            (scxmld-mouse-continue-add-new type clicked-pixel))))
+(defun scxmld-mouse-continue-add-new (type pixel-location)
+  ;; TODO - should I have a factory for these?
+  (let* ((marked (scxmld-get-marked scxmld--diagram))
+         (selection-area (2dd-get-coord (2dd-get-viewport scxmld--diagram)
+                                        pixel-location))
+         (constructor (intern (format "scxmld-%s" type)))
+         (new-element (funcall constructor)))
+    (unless marked
+      (error "No parent found for new element addition"))
+
+    ;; set the geometry to be 1 pixel - the selection area
+    ;; TODO - it may not be possible to set from a selection-area.
+    (2dd-set-geometry new-element selection-area)
+    ;; add the child to the currently marked element.
+    (scxmld-add-child scxmld--diagram marked new-element)
+    ;; set the new-element to be the marked element
+    (scxmld-set-marked scxmld--diagram new-element)
+    ;; Drop the new element into edit-idx mode.
+    (when (2dd-editable-drawing-class-p new-element)
+      ;; TODO - this may not be a rectangle at some point.
+      (2dd-set-edit-idx new-element 2))
+    (scxmld-rerender t)))
 
 (defun scxmld-mark-at-point ()
   "Wherever the cursor is, mark what is there."
@@ -319,15 +386,25 @@ Current implementation only regards LAST-DRAG."
   (2dd-zoom (2dd-get-viewport scxmld--diagram) alpha)
   (scxmld-rerender)
   (scxmld--log-viewport))
-(defun scxmld-zoom-in ()
-  "Zoom in on the current viewport"
+(defun scxmld-zoom-in (&optional pixel)
+  "Zoom in on the current viewport, optionally zoom in based on PIXEL.
+
+Note: zooming based on pixel does not yet work."
   (interactive)
   (scxmld-zoom 1.05))
-(defun scxmld-zoom-out ()
-  "Zoom out on the current viewport"
+(defun scxmld-zoom-out (&optional pixel)
+  "Zoom out on the current viewport, optionally zoom out based on PIXEL.
+
+Note: zooming based on pixel does not yet work."
   (interactive)
   (scxmld-zoom 0.95))
 
+(defun scxmld-delete-marked ()
+  "Delete the marked element and all it's child elements."
+  (interactive)
+  (let ((marked (scxmld-get-marked scxmld--diagram)))
+    (when (and marked (scxmld-delete-element scxmld--diagram marked))
+      (scxmld-rerender))))
 (defun scxmld-add-child-to-marked (new-element)
   "Add NEW-ELEMENT to the currently marked element."
   (when

@@ -122,11 +122,27 @@ made."
     (condition-case err
         (progn
           (scxml-validate-add-child parent new-child)
+          ;; if the child comes with a geometry already set, validate that against drawing constraints.
+          (when (2dd-geometry new-child)
+            (unless (2dd-validate-constraints new-child parent (scxml-children parent))
+              (error "Child drawing geometry violates drawing constraints.")))
           (scxml-add-child parent new-child t)
           (scxmld--queue-update-linked-xml diagram parent t)
           (setq success t))
       (error (scxmld-log (format "Unable to add child: %s" err) 'error)))
     success))
+(cl-defmethod scxmld-delete-element ((diagram scxmld-diagram) (element-to-delete scxmld-element))
+  "Delete ELEMENT-TO-DELETE from DIAGRAM"
+  (let ((parent (scxml-parent element-to-delete)))
+    (if (null parent)
+        ;; Can't delete the root scxml
+        nil
+      ;; If the element has a parent, it can be deleted.
+      (scxml-make-orphan element-to-delete)
+      (scxmld--queue-update-linked-xml diagram parent t)
+      t)))
+
+
 (cl-defmethod scxmld--queue-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children)
   "Debounce diagram updates to xml."
   (push `(,changed-element ,include-children) (oref diagram queued-xml-updates))
@@ -208,7 +224,7 @@ It is assumed that xmltok has already been initialized for this buffer."
               (when tags-to-prune
                 (sort tags-to-prune (lambda (a b)
                                       (> (scxmld-start a) (scxmld-start b))))
-                (mapc 'scxmld-delete tags-to-prune))
+                (mapc #'scxmld-delete tags-to-prune))
 
               ;; update all the children or create them if they're new.
               (cl-loop for child in child-elements
