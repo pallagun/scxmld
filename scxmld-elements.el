@@ -6,6 +6,7 @@
 ;;; Code:
 (eval-when-compile (require 'subr-x))
 
+(require '2dd)
 (require 'scxml)
 (require 'scxmld-element)
 
@@ -27,7 +28,10 @@
   '((t :foreground "brown"))
   "scxmld-scxml outlines style."
   :group 'scxmld-faces)
-
+(defface scxmld-parallel-outline
+  '((t :foreground "DeepSkyBlue"))
+  "scxmld-scxml outlines style."
+  :group 'scxmld-faces)
 
 (defface scxmld-outline-marked
   '((t :foreground "green"))
@@ -160,6 +164,47 @@ Special cases here are: id"
     (_ (if attribute-value
            (scxml-put-attrib element attribute-name attribute-value)
          (scxml-delete-attrib element attribute-name)))))
+
+(defclass scxmld-parallel (2dd-division-rect scxmld-element scxml-parallel scxmld-with-highlight)
+  ())
+(cl-defmethod scxmld-pprint ((element scxmld-parallel))
+  "Pretty print this <parallel> ELEMENT."
+  (format "parallel[id:%s,[%s] %s]"
+          (scxml-get-id element)
+          (if (scxmld-get-highlight element) "H" "")
+          (2dd-pprint element)))
+(cl-defmethod make-instance ((class (subclass scxmld-parallel)) &rest slots)
+  "Ensure the drawing label matches the <parallel> element's id attribute."
+  (let ((id (plist-get slots :id))
+        (instance (cl-call-next-method)))
+    (2dd-set-constraint instance 'captive+exclusive)
+    (when id
+      (2dd-set-label instance id))
+    instance))
+(cl-defmethod 2dd-render ((rect scxmld-parallel) scratch x-transformer y-transformer &rest style-plist)
+  (cl-call-next-method rect
+                       scratch
+                       x-transformer
+                       y-transformer
+                       :outline-style (if (scxmld-get-highlight rect)
+                                          'scxmld-outline-marked
+                                        'scxmld-parallel-outline)
+                       :edit-idx-style 'scxmld-edit-idx))
+(cl-defmethod scxml-set-id :after ((element scxmld-parallel) value)
+  "Set the scxml-drawing label to match ELEMENT's new id VALUE."
+  (2dd-set-label element value))
+(cl-defmethod scxmld-put-attribute ((element scxmld-parallel) (attribute-name string) attribute-value)
+  "Set ELEMENT's attribute with name ATTRIBUTE-NAME to be ATTRIBUTE-VALUE.
+
+When ATTRIBUTE-VALUE is nil the attribute will be deleted if possible.
+
+Special cases here are: id"
+  (pcase attribute-name
+    ("id" (scxml-set-id element attribute-value))
+    (_ (if attribute-value
+           (scxml-put-attrib element attribute-name attribute-value)
+         (scxml-delete-attrib element attribute-name)))))
+
 
 
 (provide 'scxmld-elements)
