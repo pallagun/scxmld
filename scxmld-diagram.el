@@ -4,6 +4,7 @@
 
 (require '2dd)
 (require 'scxml)
+(require 'scxmld-elements)
 (require 'scxmld-xml)
 
 (defvar-local scxmld-diagram-link nil
@@ -61,15 +62,19 @@
 Will return non-nil if something has been done meriting a rerender.
 
 Setting force-on-or-off to 'off or 'on will force edit-idx mode
-on or off."
+on or off.
+
+Note: if the element's parent is <parallel> this will never
+enable edit-idx mode as that's not allowed."
   (with-slots (marked-element) diagram
     (if marked-element
         (let ((edit-idx (2dd-get-edit-idx marked-element)))
           (2dd-set-edit-idx marked-element
-                            (cond ((eq force-on-or-off 'on)
-                                   (or edit-idx 0))
-                                  ((eq force-on-or-off 'off)
+                            (cond ((or (eq force-on-or-off 'off)
+                                       (scxmld--parent-is-parallel-p marked-element))
                                    nil)
+                                  ((eq force-on-or-off 'on)
+                                   (or edit-idx 0))
                                   (edit-idx
                                    nil)
                                   (t
@@ -136,6 +141,10 @@ Setting ATTRIBUTE-VALUE to nil should cause the attribute to be deleted."
           (scxml-validate-add-child parent new-child)
           ;; if the child comes with a geometry already set, validate that against drawing constraints.
           (when (2dd-geometry new-child)
+            ;; Adding a child with geometry to a parallel parent is not allowed.
+            ;; parallel children have their geometry managed for them by the parent paralell.
+            (when (scxml-parallel-class-p parent)
+              (error "Unable to add a drawing with geometry to a parallel element."))
             (unless (2dd-validate-constraints new-child parent (scxml-children parent))
               (error "Child drawing geometry violates drawing constraints.")))
           (scxml-add-child parent new-child t)

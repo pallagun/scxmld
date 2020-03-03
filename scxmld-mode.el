@@ -249,18 +249,27 @@ Current implementation only regards LAST-DRAG."
                 (cons "Add child:"
                       (mapcar (lambda (child-type)
                                 (cons (format "<%s>" child-type)
-                                      `(scxmld-mouse-begin-add-new ,child-type)))
+                                      `(scxmld-mouse-begin-add-new ,selection-element
+                                                                   ,child-type)))
                               valid-children))))))
 
     (let* ((valid-menus (seq-filter 'identity `(,edit-attribute-menu ,add-children-menu ,refresh-menu)))
            (selection (x-popup-menu t (cons menu-header valid-menus))))
       (when selection
         (apply (first selection) (rest selection))))))
-(defun scxmld-mouse-begin-add-new (type)
+(defun scxmld-mouse-begin-add-new (selected-element type)
   "Begin the new-element mouse saga."
-  (2dd-mouse-set-override 'down-mouse-1
-                          (lambda (clicked-pixel drag-pixel total-drag)
-                            (scxmld-mouse-continue-add-new type clicked-pixel))))
+  (let ((is-selected-parallel (scxml-parallel-class-p selected-element)))
+    (if (and is-selected-parallel
+             (memq type '(state parallel)))
+        ;; When adding a <state> or <parallel> to an existing
+        ;; <parallel> element the normal mouse saga is not run.
+        ;; Instead the new element is just placed into the parent.
+        (scxmld-mouse-add-child-to-parallel selected-element type)
+      ;; Otherwise, conduct the normal click-add-drag-resize mouse saga
+      (2dd-mouse-set-override 'down-mouse-1
+                              (lambda (clicked-pixel drag-pixel total-drag)
+                                (scxmld-mouse-continue-add-new type clicked-pixel))))))
 (defun scxmld-mouse-continue-add-new (type pixel-location)
   ;; TODO - should I have a factory for these?
   (let* ((marked (scxmld-get-marked scxmld--diagram))
@@ -283,6 +292,17 @@ Current implementation only regards LAST-DRAG."
       ;; TODO - this may not be a rectangle at some point.
       (2dd-set-edit-idx new-element 2))
     (scxmld-rerender t)))
+(defun scxmld-mouse-add-child-to-parallel (selected-element child-type)
+  "Add a child <state> or <parallel> to an existing <parallel>"
+  (scxmld-set-marked scxmld--diagram
+                     selected-element)
+  (case child-type
+    ('state (call-interactively #'scxmld-add-child-state-to-marked))
+    ('parallel (call-interactively #'scmxld-add-child-parallel-to-marked))
+    (_ (scxmld-log
+        (format "Unknown type for scxmld-mouse-add-child-to-parallel: %s"
+                child-type)
+        'error))))
 (defun scxmld-mouse-begin-edit-attribute (element-to-mark attribute-to-edit)
   "Mark ELEMENT-TO-MARK and begin attribute editing of ATTRIBUTE-TO-EDIT."
   (let ((currently-marked-element (scxmld-get-marked scxmld--diagram)))

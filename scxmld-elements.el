@@ -32,7 +32,6 @@
   '((t :foreground "DeepSkyBlue"))
   "scxmld-scxml outlines style."
   :group 'scxmld-faces)
-
 (defface scxmld-outline-marked
   '((t :foreground "green"))
   "scxmld-scxml outlines style."
@@ -83,6 +82,12 @@ Special cases here are: name, initial, datamodel and binding."
            (scxml-put-attrib element attribute-name attribute-value)
          (scxml-delete-attrib element attribute-name)))))
 
+(defsubst scxmld--parent-is-parallel-p (any)
+  "Return true if ANY's parent is a <parallel> element."
+  (let ((parent (scxml-parent any)))
+    (if (scxml-parallel-class-p parent)
+        t
+      nil)))
 (defclass scxmld-state (2dd-rect scxmld-element scxml-state scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-state))
@@ -100,14 +105,18 @@ Special cases here are: name, initial, datamodel and binding."
       (2dd-set-label instance id))
     instance))
 (cl-defmethod 2dd-render ((rect scxmld-state) scratch x-transformer y-transformer &rest style-plist)
-  (cl-call-next-method rect
-                       scratch
-                       x-transformer
-                       y-transformer
-                       :outline-style (if (scxmld-get-highlight rect)
-                                          'scxmld-outline-marked
-                                        'scxmld-state-outline)
-                       :edit-idx-style 'scxmld-edit-idx))
+  (let ((has-highlight (scxmld-get-highlight rect)))
+    (cl-call-next-method rect
+                         scratch
+                         x-transformer
+                         y-transformer
+                         :outline-style (if has-highlight
+                                            'scxmld-outline-marked
+                                          'scxmld-state-outline)
+                         :no-outline (if (scxmld--parent-is-parallel-p rect)
+                                         (not has-highlight)
+                                       nil)
+                         :edit-idx-style 'scxmld-edit-idx)))
 (cl-defmethod scxml-set-id :after ((element scxmld-state) value)
   "Set the scxml-drawing label to match ELEMENT's new id VALUE."
   (2dd-set-label element value))
@@ -182,14 +191,18 @@ Special cases here are: id"
       (2dd-set-label instance id))
     instance))
 (cl-defmethod 2dd-render ((rect scxmld-parallel) scratch x-transformer y-transformer &rest style-plist)
-  (cl-call-next-method rect
-                       scratch
-                       x-transformer
-                       y-transformer
-                       :outline-style (if (scxmld-get-highlight rect)
-                                          'scxmld-outline-marked
-                                        'scxmld-parallel-outline)
-                       :edit-idx-style 'scxmld-edit-idx))
+  (let ((has-highlight (scxmld-get-highlight rect)))
+    (cl-call-next-method rect
+                         scratch
+                         x-transformer
+                         y-transformer
+                         :outline-style (if has-highlight
+                                            'scxmld-outline-marked
+                                          'scxmld-parallel-outline)
+                         :no-outline (if (scxmld--parent-is-parallel-p rect)
+                                         (not has-highlight)
+                                       nil)
+                         :edit-idx-style 'scxmld-edit-idx)))
 (cl-defmethod scxml-set-id :after ((element scxmld-parallel) value)
   "Set the scxml-drawing label to match ELEMENT's new id VALUE."
   (2dd-set-label element value))
