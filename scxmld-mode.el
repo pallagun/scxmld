@@ -21,6 +21,7 @@
 (defvar scxmld-mode-map
   (let ((map (make-keymap)))
     (define-key map (kbd "C-SPC") 'scxmld-mark-at-point)
+    (define-key map (kbd "s c") 'scxmld-cycle-mark-at-point)
     (define-key map (kbd "d") 'scxmld-toggle-edit-idx-mode)
     (define-key map (kbd "C-M-f") 'scxmld-move-next)
     (define-key map (kbd "C-M-b") 'scxmld-move-prev)
@@ -71,9 +72,8 @@
 
   ;; setup mouse handlers
   (setq 2dd-mouse-hooks '((down-mouse-1 . scxmld-mouse-mark-at-point)
-                          (double-mouse-1 . scxmld-mouse-mark-and-begin-edit-at-point)
+                          (double-mouse-1 . scxmld-mouse-begin-edit-at-pixel)
                           (drag-increment-mouse-1 . scxmld-mouse-drag-edit)
-
                           (drag-increment-mouse-2 . scxmld-mouse-pan)
 
                           ;; (down-mouse-3 . scxmld-mouse-menu)
@@ -135,10 +135,13 @@
   "Return the pixel at the current point in the buffer."
   (2dg-pixel :x (current-column)
              :y (- (line-number-at-pos) 1)))
+(defsubst scxmld--get-selection-rect-at-pixel (pixel)
+  "Return the area covered by PIXEL."
+  (2dd-get-coord (2dd-get-viewport scxmld--diagram)
+                 pixel))
 (defsubst scxmld--get-selection-rect-at-point ()
   "Return the area covered by the cursor (a 2dd-rect)."
-  (2dd-get-coord (2dd-get-viewport scxmld--diagram)
-                 (scxmld--get-pixel-at-point)))
+  (scxmld--get-selection-rect-at-pixel (scxmld--get-pixel-at-point)))
 
 (defmacro scxmld-save-excursion (&rest forms)
   "Execute FORMS and keep the cursor in the same place in the diagram."
@@ -173,19 +176,19 @@
           (scxmld-goto-point (2dd-edit-idx-point marked-element edit-idx))
         (goto-char current-point)))))
 
-(defun scxmld-mouse-mark-and-begin-edit-at-point (clicked-pixel &rest drag-info)
+(defun scxmld-mouse-begin-edit-at-pixel (clicked-pixel &rest drag-info)
   "Mouse hook for a user double clicking on CLICKED-PIXEL.
 
 This will select the element and force it into edit-idx mode.
 Additionally it should begin edit-idx selection at the edit-idx
 closest to the CLICKED-PIXEL."
-  (scxmld-mark-at-point)
-  (let* ((marked-element (scxmld-get-marked scxmld--diagram))
-         (coordinate-area (2dd-get-coord (2dd-get-viewport scxmld--diagram)
+  (let* ((selection-area (scxmld--get-selection-rect-at-pixel clicked-pixel))
+         (marked-element (scxmld--get-selection-from-area selection-area))
+         (coordinate-area (2dd-get-coord (2dd-get-viewport scxmld--diagram) ;
                                          clicked-pixel))
          (click-centroid (2dg-centroid coordinate-area))
          (closest-info (2dd-get-closest-edit-idx marked-element click-centroid)))
-    (2dd-set-edit-idx marked-element (car closest-info))
+    (scxmld-set-marked-element-edit-idx scxmld--diagram (car closest-info))
     (scxmld-rerender)))
 (defun scxmld-mouse-mark-at-point (clicked-pixel &rest drag-info)
   "Mouse hook for a user clicking on CLICKED-PIXEL.
@@ -221,16 +224,36 @@ Current implementation only regards LAST-DRAG."
   "Handle mouse zoom out requests."
   (scxmld-zoom-out clicked-pixel))
 (defun scxmld-mouse-menu (clicked-pixel last-drag total-drag)
-  "Handle mouse menu requests."
+  "Handle mouse menu requests.
+
+The mouse menu is element and location sensitive.  When the
+CLICKED-PIXEL is within the currently marked element that element
+will be used to drive the menu.  When the CLICKED-PIXEL is not
+within the marked element, the element at CLICKED-PIXEL will be
+used.  The only exception is the root <scxml> element which must
+be selected directly."
   (let* ((selection-area (scxmld--get-selection-rect-at-point))
-         (selection-element (scxmld-find-drawing-selection scxmld--diagram selection-area))
+         (selection-element (scxmld--get-selection-from-area selection-area))
          (menu-header "scxmld-mode")
          (refresh-menu (list "Refresh"
                              '("Rerender" . (scxmld-rerender-and-refresh-xml))
                              '("Reset Zoom" . (scxmld-pan-zoom-reset))))
          (add-children-menu)
-         (edit-attribute-menu))
+         (edit-attribute-menu)
+         (element-selection-menu))
+
+    (let ((selectable-elements (scxmld-find-drawing-selection scxmld--diagram selection-area)))
+      (when selectable-elements
+        (setq element-selection-menu
+              (cons "Select:"
+                    (mapcar (lambda (element)
+                              (cons (format "%s: %s"
+                                            (scxml-core-type element)
+                                            (scxmld-short-name element))
+                                    nil))
+                            selectable-elements)))))
     (when selection-element
+
       (let* ((core-type (scxml-core-type selection-element))
              (valid-children (scxml-get-valid-child-types core-type))
              (valid-attributes (mapcar #'symbol-name
@@ -253,7 +276,10 @@ Current implementation only regards LAST-DRAG."
                                                                    ,child-type)))
                               valid-children))))))
 
-    (let* ((valid-menus (seq-filter 'identity `(,edit-attribute-menu ,add-children-menu ,refresh-menu)))
+    (let* ((valid-menus (seq-filter 'identity `(,edit-attribute-menu
+                                                ,add-children-menu
+                                                ,element-selection-menu
+                                                ,refresh-menu)))
            (selection (x-popup-menu t (cons menu-header valid-menus))))
       (when selection
         (apply (first selection) (rest selection))))))
@@ -312,11 +338,61 @@ Current implementation only regards LAST-DRAG."
       (scxmld-rerender))
     (scxmld-edit-named-attribute attribute-to-edit)))
 
-(defun scxmld-mark-at-point ()
-  "Wherever the cursor is, mark what is there."
+(defsubst scxmld--get-selection-from-area (selection-area)
+  "Return the element that should be marked if the user selected SELECTION-AREA."
+  (let* ((marked-element (scxmld-get-marked scxmld--diagram))
+         (selectable-elements (scxmld-find-drawing-selection scxmld--diagram
+                                                             selection-area))
+         (cycle-list (scxmld--cycle-list selectable-elements)))
+
+    (if (memq marked-element cycle-list)
+        marked-element
+      (first selectable-elements))))
+
+(defun scxmld--cycle-list (list-of-elements)
+  "Accepts a LIST-OF-ELEMENTS from most specific to least
+specific and returns a list of cycleable selection elements if
+found."
+  (let ((first-element (first list-of-elements)))
+    (if (and first-element
+             (scxmld--parent-is-parallel-p first-element))
+        (cl-loop with cycle-list = (list first-element)
+                 for next-element in (rest list-of-elements)
+                 if (scxmld-parallel-p next-element)
+                   do (push next-element cycle-list)
+                 else
+                   return (nreverse cycle-list)
+                 finally return (nreverse cycle-list))
+      nil)))
+(defun scxmld-cycle-mark-at-point ()
+  "If the cursor is in an area where there is a cycle list, cycle it."
   (interactive)
-  (let ((selection-area (scxmld--get-selection-rect-at-point))
-        (marked-element (scxmld-get-marked scxmld--diagram)))
+  (scxmld-cycle-mark-at-selection (scxmld--get-selection-rect-at-point)))
+(defun scxmld-cycle-mark-at-selection (selection-area)
+  "If the cursor is in an area where there is a cycle list, cycle it."
+  (let* ((marked-element (scxmld-get-marked scxmld--diagram))
+         (selectable-elements (scxmld-find-drawing-selection scxmld--diagram
+                                                             selection-area))
+         (cycle-list (scxmld--cycle-list selectable-elements)))
+    (when cycle-list
+      (cl-loop with previous-element = nil
+               for element in cycle-list
+               when (eq element marked-element)
+                 do (let ((element-to-mark (or previous-element
+                                               (car (last cycle-list)))))
+                      (scxmld-set-marked scxmld--diagram element-to-mark)
+                      (cl-return))
+               do (setq previous-element element))
+      (scxmld-rerender))))
+
+(defun scxmld-mark-at-point ()
+  "Wherever the cursor is, mark what is there.
+
+If there is more than one thing there and one of them is already marked, leave it marked."
+  (interactive)
+  ;; clear the last element marked cycle tracker.
+  (let ((marked-element (scxmld-get-marked scxmld--diagram))
+        (selection-area (scxmld--get-selection-rect-at-point)))
     (block scxmld-marking-block
       ;; if there is a selected drawing already and that drawing is in
       ;; edit-idx mode check to see if the user selected any of the
@@ -333,19 +409,16 @@ Current implementation only regards LAST-DRAG."
 
       ;; this was not a click on a currently marked elements edit idx
       ;; points.  Select whatever element was at the point.
-      (let ((selected-element (scxmld-find-drawing-selection scxmld--diagram
-                                                             selection-area)))
-        ;; even if selected-element is nil, still mark it.  That'll
-        ;; just clear the mark.
+      (let ((selection (scxmld--get-selection-from-area selection-area)))
         (scxmld-set-marked scxmld--diagram
-                           selected-element)
-        (when selected-element
-          (2dd-set-edit-idx selected-element nil))))
+                           selection)
+            (when selection
+              (scxmld-set-marked-element-edit-idx scxmld--diagram nil))))
     (scxmld-rerender)))
 (defun scxmld-toggle-edit-idx-mode (&optional force-on)
   "Enable edit idx mode to modify a drawing."
   (interactive)
-  (when (scxmld--toggle-marked-element-edit-idx-mode scxmld--diagram
+  (when (scxmld-toggle-marked-element-edit-idx-mode scxmld--diagram
                                                      (if force-on
                                                          'on
                                                        nil))

@@ -56,7 +56,32 @@
     (setq-local scxmld-diagram-link this)))
 
 ;; Editing helpers
-(cl-defmethod scxmld--toggle-marked-element-edit-idx-mode ((diagram scxmld-diagram) &optional force-on-or-off)
+(cl-defmethod scxmld-set-marked-element-edit-idx ((diagram scxmld-diagram) edit-idx)
+  "Enable edit idx mode on DIAGRAM's marked drawing if there is one.
+
+Will return non-nil if something has been done meriting a rerender.
+
+Setting force-on-or-off to 'off or 'on will force edit-idx mode
+on or off.
+
+Note: if the element's parent is <parallel> this will never
+enable edit-idx mode as that's not allowed."
+  (with-slots (marked-element) diagram
+    (if marked-element
+        (if (null edit-idx)
+            (progn
+              (2dd-set-edit-idx marked-element nil)
+              t)
+          ;; validate that you can go into edit-idx mode.
+          (if (scxmld--parent-is-parallel-p marked-element)
+              ;; Parent is a parallel, unable to enter edit-idx mode.
+              nil
+            ;; parent is non-parallel, you may enter edit-idx mode.
+            (2dd-set-edit-idx marked-element edit-idx)
+            t))
+      nil)))
+
+(cl-defmethod scxmld-toggle-marked-element-edit-idx-mode ((diagram scxmld-diagram) &optional force-on-or-off)
   "Enable edit idx mode on DIAGRAM's marked drawing if there is one.
 
 Will return non-nil if something has been done meriting a rerender.
@@ -69,17 +94,16 @@ enable edit-idx mode as that's not allowed."
   (with-slots (marked-element) diagram
     (if marked-element
         (let ((edit-idx (2dd-get-edit-idx marked-element)))
-          (2dd-set-edit-idx marked-element
-                            (cond ((or (eq force-on-or-off 'off)
-                                       (scxmld--parent-is-parallel-p marked-element))
-                                   nil)
-                                  ((eq force-on-or-off 'on)
-                                   (or edit-idx 0))
-                                  (edit-idx
-                                   nil)
-                                  (t
-                                   0)))
-          t)
+          (scxmld-set-marked-element-edit-idx
+           diagram
+           (cond ((eq force-on-or-off 'off)
+                  nil)
+                 ((eq force-on-or-off 'on)
+                  (or edit-idx 0))
+                 (edit-idx
+                  nil)
+                 (t
+                  0))))
       nil)))
 (cl-defmethod scxmld--incf-selection ((diagram scxmld-diagram) &optional increment)
    "Whatever is marked in DIAGRAM, move to the next reasonable thing.
@@ -330,7 +354,9 @@ Warning: will destroy all contents of the linked buffer."
                (error "Unable to find an XML element for %s"
                       (scxmld--pprint element)))
              (scxmld-mark xml-tag element t))))))))
+
 (cl-defmethod scxmld-find-drawing-selection ((diagram scxmld-diagram) (selection-rect 2dg-rect))
+  ;; TODO - I'm pretty sure this should be a defalias?
   (2dd-find-drawing-selection diagram selection-rect #'scxml-children))
 
 (provide 'scxmld-diagram)

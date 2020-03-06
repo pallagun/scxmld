@@ -57,6 +57,19 @@ When ATTRIBUTE-VALUE is nil the attribute will be deleted if possible.
 This function works regardless of the attribute being special or
 not (e.g. a <state> element's id is special and a <transition>'s
 target is special).")
+(cl-defgeneric scxmld-short-name (element)
+  "Produce a short human readable string identifying ELEMENT.
+
+This string should not have the element type in it."
+  (error "Unable scxmld-short-name for element of type: %s"
+         (eieio-object-class-name element)))
+(cl-defmethod scxmld-short-name ((element scxml-element-with-id))
+  "Return a string with the id of ELEMENT for display."
+  (let ((id (scxml-get-id element)))
+    (if id
+        id
+      "?No-Id?")))
+
 
 (defclass scxmld-synthetic-element (scxml--core-nil scxml-element 2dd-drawing)
   ()
