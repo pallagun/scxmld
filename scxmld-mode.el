@@ -39,7 +39,9 @@
     (define-key map (kbd "C-d") 'scxmld-delete-marked)
     (define-key map (kbd "a S") 'scxmld-add-child-state-to-marked)
     (define-key map (kbd "a F") 'scxmld-add-child-final-to-marked)
-    (define-key map (kbd "e e") 'scxmld-edit-attribute)
+    (define-key map (kbd "e a") 'scxmld-edit-attribute)
+    (define-key map (kbd "e i") 'scxmld-edit-id-attribute)
+    (define-key map (kbd "e n") 'scxmld-edit-name-attribute)
 
     ;; mouse handler routing.
     (define-key map (kbd "<mouse-1>") #'2dd-mouse-handler)
@@ -563,6 +565,24 @@ Note: zooming based on pixel does not yet work."
                                        attribute-name
                                        new-value)
           (scxmld-rerender))))))
+(defun scxmld-edit-id-attribute (new-id)
+  (interactive (list
+                (read-string "New id: "
+                             (scxmld-get-attribute (scxmld-get-marked scxmld--diagram)
+                                                   "id"))))
+  (scxmld-modify-attribute scxmld--diagram
+                           "id"
+                           new-id)
+  (scxmld-rerender))
+(defun scxmld-edit-name-attribute (new-name)
+  (interactive (list
+                (read-string "New name: "
+                             (scxmld-get-attribute (scxmld-get-marked scxmld--diagram)
+                                                   "name"))))
+  (scxmld-modify-attribute scxmld--diagram
+                           "name"
+                           new-name)
+  (scxmld-rerender))
 
 
 
