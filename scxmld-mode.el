@@ -250,7 +250,7 @@ be selected directly."
                               (cons (format "%s: %s"
                                             (scxml-core-type element)
                                             (scxmld-short-name element))
-                                    nil))
+                                    `(scxmld-mark-element ,element)))
                             selectable-elements)))))
     (when selection-element
 
@@ -384,6 +384,10 @@ found."
                       (cl-return))
                do (setq previous-element element))
       (scxmld-rerender))))
+(defun scxmld-mark-element (element)
+  "Mark ELEMENT and rerender."
+  (scxmld-set-marked scxmld--diagram element)
+  (scxmld-rerender))
 
 (defun scxmld-mark-at-point ()
   "Wherever the cursor is, mark what is there.

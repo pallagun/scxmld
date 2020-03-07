@@ -64,9 +64,9 @@
                          scratch
                          x-transformer
                          y-transformer
-                         :outline-style (if has-highlight 'scxmld-outline-marked 'scxmld-scxml-outline)
-                         :label-style (if has-highlight 'scxmld-label-marked nil)
-                         :edit-idx-style 'scxmld-edit-idx)))
+                         (list :outline-style (if has-highlight 'scxmld-outline-marked 'scxmld-scxml-outline)
+                               :label-style (if has-highlight 'scxmld-label-marked nil)
+                               :edit-idx-style 'scxmld-edit-idx))))
 (cl-defmethod scxml-set-name :after ((element scxmld-scxml) value)
   "Set the scxml-drawing label to match ELEMENT's new name VALUE."
   (2dd-set-label element value))
@@ -121,14 +121,14 @@ Special cases here are: name, initial, datamodel and binding."
                          scratch
                          x-transformer
                          y-transformer
-                         :outline-style (if has-highlight
-                                            'scxmld-outline-marked
-                                          'scxmld-state-outline)
-                         :no-outline (if (scxmld--parent-is-parallel-p rect)
-                                         (not has-highlight)
-                                       nil)
-                         :label-style (if has-highlight 'scxmld-label-marked nil)
-                         :edit-idx-style 'scxmld-edit-idx)))
+                         (list :outline-style (if has-highlight
+                                                  'scxmld-outline-marked
+                                                'scxmld-state-outline)
+                               :no-outline (if (scxmld--parent-is-parallel-p rect)
+                                               (not has-highlight)
+                                             nil)
+                               :label-style (if has-highlight 'scxmld-label-marked nil)
+                               :edit-idx-style 'scxmld-edit-idx))))
 (cl-defmethod scxml-set-id :after ((element scxmld-state) value)
   "Set the scxml-drawing label to match ELEMENT's new id VALUE."
   (2dd-set-label element value))
@@ -175,11 +175,11 @@ Special cases here are: id, initial."
                          scratch
                          x-transformer
                          y-transformer
-                         :outline-style (if (scxmld-get-highlight rect)
-                                            'scxmld-outline-marked
-                                          'scxmld-final-outline)
-                         :label-style (if has-highlight 'scxmld-label-marked nil)
-                         :edit-idx-style 'scxmld-edit-idx)))
+                         (list :outline-style (if (scxmld-get-highlight rect)
+                                                  'scxmld-outline-marked
+                                                'scxmld-final-outline)
+                               :label-style (if has-highlight 'scxmld-label-marked nil)
+                               :edit-idx-style 'scxmld-edit-idx))))
 (cl-defmethod scxml-set-id :after ((element scxmld-final) value)
   "Set the scxml-drawing label to match ELEMENT's new id VALUE."
   (2dd-set-label element value))
@@ -217,14 +217,14 @@ Special cases here are: id"
                          scratch
                          x-transformer
                          y-transformer
-                         :outline-style (if has-highlight
-                                            'scxmld-outline-marked
-                                          'scxmld-parallel-outline)
-                         :no-outline (if (scxmld--parent-is-parallel-p rect)
-                                         (not has-highlight)
-                                       nil)
-                         :label-style (if has-highlight 'scxmld-label-marked nil)
-                         :edit-idx-style 'scxmld-edit-idx)))
+                         (list :outline-style (if has-highlight
+                                                  'scxmld-outline-marked
+                                                'scxmld-parallel-outline)
+                               :no-outline (if (scxmld--parent-is-parallel-p rect)
+                                               (not has-highlight)
+                                             nil)
+                               :label-style (if has-highlight 'scxmld-label-marked nil)
+                               :edit-idx-style 'scxmld-edit-idx))))
 (cl-defmethod scxml-set-id :after ((element scxmld-parallel) value)
   "Set the scxml-drawing label to match ELEMENT's new id VALUE."
   (2dd-set-label element value))
