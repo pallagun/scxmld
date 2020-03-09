@@ -10,7 +10,7 @@
 (require 'scxml)
 (require 'scxmld-element)
 
-;; Note: M-x list-colors-display to see all colors
+;; Note: M-x (list-colors-display) to see all colors
 (defface scxmld-edit-idx
   '((t :foreground "yellow"))
   "Edit idx style for any drawing."
@@ -31,6 +31,10 @@
 (defface scxmld-parallel-outline
   '((t :foreground "DeepSkyBlue"))
   "scxmld-parallel outlines style."
+  :group 'scxmld-faces)
+(defface scxmld-transition-outline
+  '((t :foreground "magenta"))
+  "scxmld-transition outlines style."
   :group 'scxmld-faces)
 (defface scxmld-outline-marked
   '((t :foreground "green"))
@@ -58,12 +62,13 @@
     (when name
       (2dd-set-label instance name))
     instance))
-(cl-defmethod 2dd-render ((rect scxmld-scxml) scratch x-transformer y-transformer &rest style-plist)
+(cl-defmethod 2dd-render ((rect scxmld-scxml) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect
                          scratch
                          x-transformer
                          y-transformer
+                         viewport
                          (list :outline-style (if has-highlight 'scxmld-outline-marked 'scxmld-scxml-outline)
                                :label-style (if has-highlight 'scxmld-label-marked nil)
                                :edit-idx-style 'scxmld-edit-idx))))
@@ -115,12 +120,13 @@ Special cases here are: name, initial, datamodel and binding."
     (when id
       (2dd-set-label instance id))
     instance))
-(cl-defmethod 2dd-render ((rect scxmld-state) scratch x-transformer y-transformer &rest style-plist)
+(cl-defmethod 2dd-render ((rect scxmld-state) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect
                          scratch
                          x-transformer
                          y-transformer
+                         viewport
                          (list :outline-style (if has-highlight
                                                   'scxmld-outline-marked
                                                 'scxmld-state-outline)
@@ -169,12 +175,13 @@ Special cases here are: id, initial."
     (when id
       (2dd-set-label instance id))
     instance))
-(cl-defmethod 2dd-render ((rect scxmld-final) scratch x-transformer y-transformer &rest style-plist)
+(cl-defmethod 2dd-render ((rect scxmld-final) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect
                          scratch
                          x-transformer
                          y-transformer
+                         viewport
                          (list :outline-style (if (scxmld-get-highlight rect)
                                                   'scxmld-outline-marked
                                                 'scxmld-final-outline)
@@ -211,12 +218,13 @@ Special cases here are: id"
     (when id
       (2dd-set-label instance id))
     instance))
-(cl-defmethod 2dd-render ((rect scxmld-parallel) scratch x-transformer y-transformer &rest style-plist)
+(cl-defmethod 2dd-render ((rect scxmld-parallel) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect
                          scratch
                          x-transformer
                          y-transformer
+                         viewport
                          (list :outline-style (if has-highlight
                                                   'scxmld-outline-marked
                                                 'scxmld-parallel-outline)
@@ -239,6 +247,70 @@ Special cases here are: id"
     (_ (if attribute-value
            (scxml-put-attrib element attribute-name attribute-value)
          (scxml-delete-attrib element attribute-name)))))
+
+(defclass scxmld-transition (2dd-link scxmld-element scxml-transition scxmld-with-highlight)
+  ())
+(cl-defmethod make-instance ((class (subclass scxmld-transition)) &rest slots)
+  "Ensure the transition is set up correctly."
+  (let ((instance (cl-call-next-method)))
+    (2dd-set-constraint instance 'free)
+    instance))
+(cl-defmethod scxmld-pprint ((element scxmld-transition))
+  "Pretty print this <transition> ELEMENT."
+  (let ((parent (scxml-parent element)))
+    (format "transition[from:%s, to:%s, dr:%s]"
+            (if parent
+                (scxmld-short-name parent)
+              "UNK?")
+            (scxml-target-id element)
+            (2dd-pprint element))))
+(cl-defmethod 2dd-render ((element scxmld-transition) scratch x-transformer y-transformer viewport &rest style-plist)
+  (let ((has-highlight (scxmld-get-highlight element)))
+    (cl-call-next-method element
+                         scratch
+                         x-transformer
+                         y-transformer
+                         viewport
+                         (list :connector-offset (2dd-get-point-scaling viewport)
+                               :outline-style (if has-highlight
+                                                  'scxmld-outline-marked
+                                                'scxmld-transition-outline)
+                               :edit-idx-style 'scxmld-edit-idx))))
+(cl-defmethod scxmld-put-attribute ((element scxmld-transition) (attribute-name string) attribute-value)
+  "Set ELEMENT's attribute with name ATTRIBUTE-NAME to be ATTRIBUTE-VALUE.
+
+When ATTRIBUTE-VALUE is nil the attribute will be deleted if possible.
+
+Special cases here are: target, event, cond, type"
+  (pcase attribute-name
+    ("target" (scxml-set-target-id element attribute-value))
+    ("event" (scxml-set-events element attribute-value))
+    ("cond" (scxml-set-cond-expr element attribute-value))
+    ("type" (scxml-set-type element attribute-value))
+    (_ (if attribute-value
+           (scxml-put-attrib element attribute-name attribute-value)
+         (scxml-delete-attrib element attribute-name)))))
+(defun scxmld--update-transition-target (transition)
+  "Update TRANSITION's drawing to reference a possibly new target."
+  (let ((target-id (scxml-get-target-id transition)))
+    (if target-id
+        ;; This transition has a target, ensure the drawing is
+        ;; connected to it.  If not, update the drawing to connect to
+        ;; it.
+        (let ((current-target (2dd-get-target transition)))
+          (when (not (equal (scxml-get-id current-target) target-id))
+            ;; not the correct element, must update.
+            (let ((target-element (scxml-element-find-by-id
+                                   (scxml-root-element transition)
+                                   target-id)))
+              (2dd-set-target link target-element))))
+      ;; otherwise, clear the target
+      (2dd-set-target link nil))))
+(cl-defmethod scxml-add-child :after ((parent scxmld-element) (transition scxmld-transition) &optional append)
+  "Ensure that the 2dd drawing connections are updated after this add."
+  ;; TODO - there should be another update for make-orphan
+  (2dd-set-source transition parent))
+
 
 
 

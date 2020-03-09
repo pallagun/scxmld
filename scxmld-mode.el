@@ -39,6 +39,7 @@
     (define-key map (kbd "C-d") 'scxmld-delete-marked)
     (define-key map (kbd "a S") 'scxmld-add-child-state-to-marked)
     (define-key map (kbd "a F") 'scxmld-add-child-final-to-marked)
+    (define-key map (kbd "a T") 'scxmld-add-child-transition-to-marked)
     (define-key map (kbd "e a") 'scxmld-edit-attribute)
     (define-key map (kbd "e i") 'scxmld-edit-id-attribute)
     (define-key map (kbd "e n") 'scxmld-edit-name-attribute)
@@ -540,6 +541,12 @@ Note: zooming based on pixel does not yet work."
   "Add a child final with ID to marked element."
   (interactive "sNew <final> id: ")
   (scxmld-add-child-to-marked (scxmld-final :id id)))
+(defun scxmld-add-child-transition-to-marked (target-id)
+  (interactive "sNew <transition> target: ")
+  (scxmld-add-child-to-marked
+   (scxmld-transition :target (if (seq-empty-p (string-trim target-id))
+                                  nil
+                                target-id))))
 
 (defun scxmld-delete-attribute (attribute-name)
   (interactive "sAttribute Name:")
