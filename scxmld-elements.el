@@ -251,7 +251,9 @@ Special cases here are: id"
 (defclass scxmld-transition (2dd-link scxmld-element scxml-transition scxmld-with-highlight)
   ())
 (cl-defmethod make-instance ((class (subclass scxmld-transition)) &rest slots)
-  "Ensure the transition is set up correctly."
+  "Ensure the transition is set up correctly and poperly setup source and target drawing connectors.
+
+Find the :target in SLOTS and properly set the 2dd-link drawing to use it as well"
   (let ((instance (cl-call-next-method)))
     (2dd-set-constraint instance 'free)
     instance))
@@ -309,8 +311,27 @@ Special cases here are: target, event, cond, type"
 (cl-defmethod scxml-add-child :after ((parent scxmld-element) (transition scxmld-transition) &optional append)
   "Ensure that the 2dd drawing connections are updated after this add."
   ;; TODO - there should be another update for make-orphan
-  (2dd-set-source transition parent))
+  (2dd-set-source transition parent)
+  (scxmld--transition-update-target-drawing transition
+                                            (scxml-get-target-id transition)))
+(cl-defmethod scxml-make-orphan :after ((element scxmld-transition))
+  "When orphaning an element, ensure the drawing is separated as well."
+  (2dd-set-source element nil)
+  (2dd-set-target element nil)
+  (2dd-clear-inner-path element))
 
+(cl-defmethod scxml-set-target-id :after ((element scxmld-transition) target-id)
+  "When changing the target id of a transition, update the drawing as well."
+  (scxmld--transition-update-target-drawing element target-id))
+
+(defsubst scxmld--transition-update-target-drawing (transition target-id)
+  "Update TRANSITION's drawing to properly reflect a new TARGET-ID"
+  (when (and target-id (not (seq-empty-p target-id)))
+    (let ((target-transition (scxml-element-find-by-id
+                              (scxml-root-element transition)
+                              target-id)))
+      (when target-transition
+        (2dd-set-target transition target-transition)))))
 
 
 

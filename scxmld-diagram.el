@@ -160,7 +160,7 @@ Setting ATTRIBUTE-VALUE to nil should cause the attribute to be deleted."
 (cl-defmethod scxmld-add-child ((diagram scxmld-diagram) (parent scxmld-element) (new-child scxmld-element))
   "Add NEW-CHILD to PARENT in DIAGRAM."
   (let ((success))
-    (condition-case err
+    ;; (condition-case err
         (progn
           (scxml-validate-add-child parent new-child)
           ;; if the child comes with a geometry already set, validate that against drawing constraints.
@@ -174,7 +174,7 @@ Setting ATTRIBUTE-VALUE to nil should cause the attribute to be deleted."
           (scxml-add-child parent new-child t)
           (scxmld--queue-update-linked-xml diagram parent t)
           (setq success t))
-      (error (scxmld-log (format "Unable to add child: %s" err) 'error)))
+        ;; (error (scxmld-log (format "Unable to add child: %s" err) 'error)))
     success))
 (cl-defmethod scxmld-delete-element ((diagram scxmld-diagram) (element-to-delete scxmld-element))
   "Delete ELEMENT-TO-DELETE from DIAGRAM"
@@ -239,7 +239,6 @@ It is assumed that xmltok has already been initialized for this buffer."
       (with-current-buffer buffer
         (unless start-at-point
           (goto-char (point-min)))
-
         (let ((tag (scxmld--xmltok-find-element changed-element t)))
           (if tag
               (progn
