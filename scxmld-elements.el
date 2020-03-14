@@ -292,22 +292,6 @@ Special cases here are: target, event, cond, type"
     (_ (if attribute-value
            (scxml-put-attrib element attribute-name attribute-value)
          (scxml-delete-attrib element attribute-name)))))
-(defun scxmld--update-transition-target (transition)
-  "Update TRANSITION's drawing to reference a possibly new target."
-  (let ((target-id (scxml-get-target-id transition)))
-    (if target-id
-        ;; This transition has a target, ensure the drawing is
-        ;; connected to it.  If not, update the drawing to connect to
-        ;; it.
-        (let ((current-target (2dd-get-target transition)))
-          (when (not (equal (scxml-get-id current-target) target-id))
-            ;; not the correct element, must update.
-            (let ((target-element (scxml-element-find-by-id
-                                   (scxml-root-element transition)
-                                   target-id)))
-              (2dd-set-target link target-element))))
-      ;; otherwise, clear the target
-      (2dd-set-target link nil))))
 (cl-defmethod scxml-add-child :after ((parent scxmld-element) (transition scxmld-transition) &optional append)
   "Ensure that the 2dd drawing connections are updated after this add."
   ;; TODO - there should be another update for make-orphan
@@ -326,12 +310,13 @@ Special cases here are: target, event, cond, type"
 
 (defsubst scxmld--transition-update-target-drawing (transition target-id)
   "Update TRANSITION's drawing to properly reflect a new TARGET-ID"
-  (when (and target-id (not (seq-empty-p target-id)))
-    (let ((target-transition (scxml-element-find-by-id
-                              (scxml-root-element transition)
-                              target-id)))
-      (when target-transition
-        (2dd-set-target transition target-transition)))))
+  (if (and target-id (not (seq-empty-p target-id)))
+      (let ((target-transition (scxml-element-find-by-id
+                                (scxml-root-element transition)
+                                target-id)))
+        (when target-transition
+          (2dd-set-target transition target-transition)))
+    (2dd-set-target transition nil)))
 
 
 

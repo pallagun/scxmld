@@ -209,27 +209,27 @@ Setting ATTRIBUTE-VALUE to nil should cause the attribute to be deleted."
   ;; Update filtering is currently only a repeat compressor.  this
   ;; could be made more intelligent but I think a repeat compressor is
   ;; likely all that is needed.
-  (let ((unfiltered-updates (nreverse (scxmld-get-queued-xml-updates diagram)))
-        (updates))
-    (cl-loop for update in unfiltered-updates
-             for update-element = (car update)
-             for last-update-element = (car (first updates))
+  (let* ((unfiltered-updates (nreverse (scxmld-get-queued-xml-updates diagram)))
+         (updates (list (first unfiltered-updates))))
+    (cl-loop for update in (rest unfiltered-updates)
+             for update-element = (first update)
+             for update-include-children = (second update)
+             for last-update-element = (first (first updates))
+             for last-update-include-children = (second (first updates))
              do (if (eq update-element last-update-element)
-                    ;; repeated update - condense them
-                    (let ((include-children (cdr update))
-                          (last-include-children (cdr (first updates))))
-                      (setcdr (first updates)
-                              (or include-children last-include-children)))
+                    ;; repeated update - condense them (ensure it's
+                    ;; properly set to include children if needed)
+                    (if (not (eq update-include-children last-update-include-children))
+                        (setcdr (first updates) '(t)))
                   ;; new update, push it on.
                   (push update updates)))
-    ;; (message (format "got %d updates down to %d"
-    ;;                  (length unfiltered-updates)
-    ;;                  (length updates)))
     (mapc (lambda (changed-element-and-include-children)
             (scxmld-update-linked-xml diagram
-                                      (car changed-element-and-include-children)
-                                      (cdr changed-element-and-include-children)))
-          updates)))
+                                      (first changed-element-and-include-children)
+                                      (second changed-element-and-include-children)))
+          updates))
+  ;; clear the queue
+  (oset diagram queued-xml-updates nil))
 (cl-defmethod scxmld-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children start-at-point)
   "Given a DIAGRAM and a newly updated CHANGED-ELEMENT, update the linked xml buffer.
 
@@ -260,11 +260,13 @@ It is assumed that xmltok has already been initialized for this buffer."
             ;; scan for all child xml-tags and delete any that are missing.
             (let ((child-tags (scxmld-children tag))
                   (child-elements (scxml-children changed-element))
+                  (elements-to-prune)
                   (tags-to-prune))
               (cl-loop for child in child-tags
                        for linked-element = (scxmld-get-mark child)
                        when (not (memq linked-element child-elements))
-                       do (push child tags-to-prune))
+                       do (progn (push child tags-to-prune)
+                                 (push linked-element elements-to-prune)))
               (when tags-to-prune
                 (sort tags-to-prune (lambda (a b)
                                       (> (scxmld-start a) (scxmld-start b))))
@@ -272,8 +274,9 @@ It is assumed that xmltok has already been initialized for this buffer."
 
               ;; update all the children or create them if they're new.
               (cl-loop for child in child-elements
-                       ;; TODO: change that last nil back to a t when debugging is easier.
-                       do (scxmld-update-linked-xml diagram child t nil)))))))))
+                       when (not (memq child elements-to-prune))
+                         ;; TODO: change that last nil back to a t when debugging is easier.
+                         do (scxmld-update-linked-xml diagram child t nil)))))))))
 
 ;; actions
 (cl-defgeneric scxmld-plot ((diagram scxmld-diagram))
