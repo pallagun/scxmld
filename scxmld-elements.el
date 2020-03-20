@@ -33,6 +33,10 @@
   "scxmld-parallel outlines style."
   :group 'scxmld-faces)
 (defface scxmld-transition-outline
+  '((t :foreground "DarkMagenta"))
+  "scxmld-transition outlines style."
+  :group 'scxmld-faces)
+(defface scxmld-transition-arrow
   '((t :foreground "magenta"))
   "scxmld-transition outlines style."
   :group 'scxmld-faces)
@@ -264,7 +268,7 @@ Find the :target in SLOTS and properly set the 2dd-link drawing to use it as wel
             (if parent
                 (scxmld-short-name parent)
               "UNK?")
-            (scxml-target-id element)
+            (scxml-get-target-id element)
             (2dd-pprint element))))
 (cl-defmethod 2dd-render ((element scxmld-transition) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight element)))
@@ -274,6 +278,11 @@ Find the :target in SLOTS and properly set the 2dd-link drawing to use it as wel
                          y-transformer
                          viewport
                          (list :connector-offset (2dd-get-point-scaling viewport)
+                               :link-start nil ;nothing at the start of transitions
+                               :link-end 'arrow ;arrows at the ends of transitions
+                               :end-style (if has-highlight
+                                              'scxmld-outline-marked
+                                            'scxmld-transition-arrow)
                                :outline-style (if has-highlight
                                                   'scxmld-outline-marked
                                                 'scxmld-transition-outline)

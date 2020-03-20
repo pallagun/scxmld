@@ -22,7 +22,8 @@
   (let ((map (make-keymap)))
     (define-key map (kbd "C-SPC") 'scxmld-mark-at-point)
     (define-key map (kbd "s c") 'scxmld-cycle-mark-at-point)
-    (define-key map (kbd "d") 'scxmld-toggle-edit-idx-mode)
+    (define-key map (kbd "d e") 'scxmld-toggle-edit-idx-mode)
+    (define-key map (kbd "d s") 'scxmld-simplify)
     (define-key map (kbd "C-M-f") 'scxmld-move-next)
     (define-key map (kbd "C-M-b") 'scxmld-move-prev)
 
@@ -446,6 +447,11 @@ If there is more than one thing there and one of them is already marked, leave i
 (defun scxmld-modify-right ()
   (interactive)
   (scxmld-modify 1 0))
+(defun scxmld-simplify ()
+  "Whatever drawing is marked, attempt to simplify it."
+  (interactive)
+  (when (scxmld-simplify-drawing scxmld--diagram)
+    (scxmld-rerender)))
 
 (defun scxmld-move-next ()
   "Whatever is selected, move to the next reasonable thing."

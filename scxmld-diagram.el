@@ -145,6 +145,13 @@ made."
                      t)
             nil))
       nil)))
+(cl-defmethod scxmld-simplify-drawing ((diagram scxmld-diagram))
+  "Simplify marked drawing if possible, return non-nil if there were any changes."
+  (let ((marked-element (scxmld-get-marked diagram)))
+    (if (and marked-element (2dd-link-class-p marked-element))
+        (2dd-simplify marked-element (2dd-get-point-scaling
+                                      (2dd-get-viewport diagram)))
+      nil)))
 (cl-defmethod scxmld-modify-attribute ((diagram scxmld-diagram) (attribute-name string) attribute-value)
   "Modify the ATTRIBUTE-NAME'd attribute to be ATTRIBUTE-VALUE of the marked drawing in DIAGRAM.
 
@@ -178,6 +185,10 @@ Setting ATTRIBUTE-VALUE to nil should cause the attribute to be deleted."
     success))
 (cl-defmethod scxmld-delete-element ((diagram scxmld-diagram) (element-to-delete scxmld-element))
   "Delete ELEMENT-TO-DELETE from DIAGRAM"
+  ;; if the element you're deleting was the marked element, unmark it.
+  (when (eq (scxmld-get-marked diagram) element-to-delete)
+    (scxmld-set-marked diagram nil))
+
   (let ((parent (scxml-parent element-to-delete)))
     (if (null parent)
         ;; Can't delete the root scxml
@@ -185,6 +196,7 @@ Setting ATTRIBUTE-VALUE to nil should cause the attribute to be deleted."
       ;; If the element has a parent, it can be deleted.
       (scxml-make-orphan element-to-delete)
       (scxmld--queue-update-linked-xml diagram parent t)
+
       t)))
 
 ;; XML update handling.
