@@ -145,6 +145,18 @@ made."
                      t)
             nil))
       nil)))
+(cl-defmethod scxmld-autoplot-drawing ((diagram scxmld-diagram))
+  "Attempt to autoplot whatever drawing is currently marked.
+
+Autoplotting, at present, only works for links/transitions."
+  (let ((marked-element (scxmld-get-marked diagram)))
+    (if (and marked-element (2dd-link-class-p marked-element))
+        (progn
+          ;; autoplot the inner path for now.
+          (2dd-replot-inner-path marked-element)
+          (scxmld--queue-update-linked-xml diagram marked-element t)
+          t)
+      nil)))
 (cl-defmethod scxmld-simplify-drawing ((diagram scxmld-diagram))
   "Simplify marked drawing if possible, return non-nil if there were any changes."
   (let ((marked-element (scxmld-get-marked diagram)))

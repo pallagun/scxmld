@@ -22,10 +22,14 @@
   (let ((map (make-keymap)))
     (define-key map (kbd "C-SPC") 'scxmld-mark-at-point)
     (define-key map (kbd "s c") 'scxmld-cycle-mark-at-point)
-    (define-key map (kbd "d e") 'scxmld-toggle-edit-idx-mode)
-    (define-key map (kbd "d s") 'scxmld-simplify)
     (define-key map (kbd "C-M-f") 'scxmld-move-next)
     (define-key map (kbd "C-M-b") 'scxmld-move-prev)
+
+    (define-key map (kbd "d e") 'scxmld-toggle-edit-idx-mode)
+    (define-key map (kbd "d s") 'scxmld-simplify)
+    (define-key map (kbd "d d") 'scxmld-drawing-debug)
+    (define-key map (kbd "d a") 'scxmld-drawing-autoplot)
+
 
     (define-key map (kbd "M-f") 'scxmld-modify-right)
     (define-key map (kbd "M-b") 'scxmld-modify-left)
@@ -451,6 +455,16 @@ If there is more than one thing there and one of them is already marked, leave i
   "Whatever drawing is marked, attempt to simplify it."
   (interactive)
   (when (scxmld-simplify-drawing scxmld--diagram)
+    (scxmld-rerender)))
+(defun scxmld-drawing-debug ()
+  "Whatever drawing is marked, pop up a buffer with debug information."
+  (interactive)
+  (let ((marked (scxmld-get-marked scxmld--diagram)))
+    (message (prin1-to-string marked))))
+(defun scxmld-drawing-autoplot ()
+  "Autoplot the marked drawing if possible."
+  (interactive)
+  (when (scxmld-autoplot-drawing scxmld--diagram)
     (scxmld-rerender)))
 
 (defun scxmld-move-next ()
