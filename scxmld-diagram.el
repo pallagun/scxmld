@@ -174,6 +174,18 @@ Setting ATTRIBUTE-VALUE to nil should cause the attribute to be deleted."
         nil
       ;; Element marked, update the attribute.
       (scxmld-put-attribute marked-element attribute-name attribute-value)
+
+      (when (and (scxmld-transition-p marked-element)
+                 (equal attribute-name "target")
+                 (2dd-needs-replot marked-element))
+        ;; You've edited a transition such that it needs to be replotted.
+        (2dd-plot marked-element
+                  (2dd-get-inner-canvas (scxml-parent marked-element))
+                  (lambda (_) nil)      ;no children for now.
+                  (lambda (_) t)        ;preserve whatever you can.
+                  scxmld-plot-settings))
+
+
       (scxmld--queue-update-linked-xml diagram marked-element t)
       t)))
 (cl-defmethod scxmld-add-child ((diagram scxmld-diagram) (parent scxmld-element) (new-child scxmld-element))
