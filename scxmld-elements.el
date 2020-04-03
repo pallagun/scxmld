@@ -108,6 +108,22 @@ Special cases here are: name, initial, datamodel and binding."
     (if (and parent (scxml-parallel-class-p parent))
         t
       nil)))
+(defun scxmld--get-targeting-transitions (element)
+  "If ELEMENT has an id attribute, return all transition elements which target it.
+
+Returns a list of elements.  May return nil if there are no
+targeting transitions."
+  (when (scxml-element-with-id-class-p element)
+    (let ((id (scxml-get-id element)))
+      (unless (seq-empty-p id)
+        (let ((targeting-transitions))
+          (scxml-visit-all element
+                           (lambda (transition)
+                             (when (equal id (scxml-get-target-id transition))
+                               (push transition targeting-transitions)))
+                           #'scxml-transition-class-p)
+          targeting-transitions)))))
+
 (defclass scxmld-state (2dd-rect scxmld-element scxml-state scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-state))
@@ -124,6 +140,11 @@ Special cases here are: name, initial, datamodel and binding."
     (when id
       (2dd-set-label instance id))
     instance))
+(cl-defmethod scxmld-children ((state scxmld-state))
+  "Return the children of the STATE element."
+  ;; TODO - I think I can do this with an nconc if the last list is the real children.
+  (append (scxmld--get-targeting-transitions state)
+          (cl-call-next-method)))
 (cl-defmethod 2dd-render ((rect scxmld-state) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect
@@ -179,6 +200,11 @@ Special cases here are: id, initial."
     (when id
       (2dd-set-label instance id))
     instance))
+(cl-defmethod scxmld-children ((final scxmld-final))
+  "Return the children of the FINIAL element."
+  ;; TODO - I think I can do this with an nconc if the last list is the real children.
+  (append (scxmld--get-targeting-transitions final)
+          (cl-call-next-method)))
 (cl-defmethod 2dd-render ((rect scxmld-final) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect
@@ -222,6 +248,11 @@ Special cases here are: id"
     (when id
       (2dd-set-label instance id))
     instance))
+(cl-defmethod scxmld-children ((parallel scxmld-parallel))
+  "Return the children of the ELEMENT."
+  ;; TODO - I think I can do this with an nconc if the last list is the real children.
+  (append (scxmld--get-targeting-transitions parallel)
+          (cl-call-next-method)))
 (cl-defmethod 2dd-render ((rect scxmld-parallel) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect

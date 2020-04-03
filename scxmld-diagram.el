@@ -327,7 +327,7 @@ should be preserved or replotted.
 PRESERVE-PREDICATE defaults to preserving all drawings."
   (2dd-plot (2dd-get-root diagram)
             (2dd-get-canvas diagram)
-            #'scxml-children
+            #'scxmld-children
             (lambda (_) t)
             scxmld-plot-settings))
 (cl-defgeneric scxmld-update-drawing ((diagram scxmld-diagram) (element scxmld-element) updated-geometry)
@@ -342,13 +342,13 @@ not complete."
         (siblings (scxml-siblings element)))
     (2dd-update-plot element
                      updated-geometry
-                     #'scxml-children
+                     #'scxmld-children
                      parent
                      siblings)))
 
 (cl-defmethod scxmld-render ((diagram scxmld-diagram))
   "Render the scxmld diagram."
-  (2dd-render-all diagram #'scxml-children))
+  (2dd-render-all diagram #'scxmld-children))
 (cl-defmethod scxmld-reset-viewport ((diagram scxmld-diagram))
   "Reset DIAGRAM's viewport to default extents and zoom."
   (2dd-set-viewport diagram

@@ -21,6 +21,14 @@ in an xml document.")
 (defsubst scxmld-element-class-p (any)
   "Equivalent of (object-of-class-p ANY 'scxml-drawable-element)."
   (object-of-class-p any 'scxmld-element))
+(cl-defgeneric scxmld-children ((element scxmld-element))
+  "Return the children of the ELEMENT.
+
+Defaults to using scxml-children.")
+(cl-defmethod scxmld-children ((element scxmld-element))
+  "Return the children of the ELEMENT."
+  (scxml-children element))
+
 (cl-defmethod scxml-xml-attributes ((element scxmld-element))
   "Return the xml attributes for ELEMENT, a drawing with a geometry attribute.
 
