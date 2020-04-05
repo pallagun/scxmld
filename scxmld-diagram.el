@@ -87,7 +87,8 @@ enable edit-idx mode as that's not allowed."
 (cl-defmethod scxmld-toggle-marked-element-edit-idx-mode ((diagram scxmld-diagram) &optional force-on-or-off)
   "Enable edit idx mode on DIAGRAM's marked drawing if there is one.
 
-Will return non-nil if something has been done meriting a rerender.
+Will return non-nil if something has been done which should cause
+a rerender.
 
 Setting force-on-or-off to 'off or 'on will force edit-idx mode
 on or off.
@@ -96,17 +97,22 @@ Note: if the element's parent is <parallel> this will never
 enable edit-idx mode as that's not allowed."
   (with-slots (marked-element) diagram
     (if marked-element
-        (let ((edit-idx (2dd-get-edit-idx marked-element)))
-          (scxmld-set-marked-element-edit-idx
-           diagram
-           (cond ((eq force-on-or-off 'off)
-                  nil)
-                 ((eq force-on-or-off 'on)
-                  (or edit-idx 0))
-                 (edit-idx
-                  nil)
-                 (t
-                  0))))
+        (let* ((edit-idx (2dd-get-edit-idx marked-element))
+               (new-edit-idx (cond ((eq force-on-or-off 'off)
+                                    nil)
+                                   ((eq force-on-or-off 'on)
+                                    (or edit-idx 0))
+                                   (edit-idx
+                                    nil)
+                                   (t
+                                    0))))
+          (unless new-edit-idx
+            ;; TODO - this is just clearing the possible connection.
+            ;; In the future it should commit the possible connection
+            ;; if it can but attention should be paid to the behavior
+            ;; difference between mouse usage and keyboard usage.
+            (scxmld-clear-possible-connection diagram))
+          (scxmld-set-marked-element-edit-idx diagram new-edit-idx))
       nil)))
 (cl-defmethod scxmld--incf-selection ((diagram scxmld-diagram) &optional increment)
    "Whatever is marked in DIAGRAM, move to the next reasonable thing.
@@ -133,58 +139,80 @@ made."
     (if marked-element
         (let* ((scratch-delta (2dg-point- x-scratch y-scratch))
                (scaling (2dd-get-point-scaling (2dd-get-viewport diagram)))
-               (delta (2dg-scaled scratch-delta scaling))
-               (edit-idx (2dd-get-edit-idx marked-element))
-               (edited-geometry (if edit-idx
-                                    (2dd-build-idx-edited-geometry marked-element
-                                                                   edit-idx
-                                                                   delta)
-                                  (2dd-build-move-edited-geometry marked-element
-                                                                  delta))))
-          (when edited-geometry
-              ;; TODO - make sure edited geometry doesn't clash with any siblings
-            (scxmld-update-drawing diagram marked-element edited-geometry)
-            (scxmld--queue-update-linked-xml diagram marked-element t)
-
-            ;; lastly, if this is a transition, you have the last
-            ;; edit-idx selected and the target is not connected,
-            ;; enable fancy connection mode.
-            (scxmld-clear-possible-connection diagram)
-
-            (when (and (scxmld-transition-p marked-element)
-                       (seq-empty-p (scxml-get-target-id marked-element))
-                       (= (1- (2dd-num-edit-idxs marked-element))
-                          (2dd-get-edit-idx marked-element)))
-              ;; check to see if the last edit idx point is *on* the edge of something.
-              (let* ((point (2dd-edit-idx-point marked-element
-                                                (1- (2dd-num-edit-idxs marked-element))))
-                     (pixel (2dd-get-pixel (2dd-get-viewport diagram) point))
-                     (selection-rect (2dd-get-coord (2dd-get-viewport diagram) pixel))
-                     (targeted-element))
-                (block find-target-element
-                  (scxml-visit (2dd-get-root diagram)
-                               (lambda (element)
-                                 ;; all these elements have rectangular geometry
-                                 (let* ((rectg (2dd-geometry element))
-                                        (outer-shell (2dg-segments rectg)))
-                                   (cl-loop for segment in outer-shell
-                                            when (2dg-has-intersection selection-rect
-                                                                       segment
-                                                                       'stacked)
-                                            do (progn
-                                                 (setq targeted-element element)
-                                                 (return-from find-target-element)))))
-                             (lambda (element)
-                               (or (scxml-state-class-p element)
-                                   (scxml-final-class-p element)
-                                   (scxml-parallel-class-p element)))))
-                (when targeted-element
-                  (scxmld-set-highlight targeted-element t)
-                  (scxmld-set-possible-connection diagram targeted-element)
-                  (message "do you want to connect to: %s"
-                           (scxmld-pprint targeted-element)))))
-            t))
+               (delta (2dg-scaled scratch-delta scaling)))
+          (scxmld--modify-drawing diagram marked-element delta))
+          ;;      (edit-idx (2dd-get-edit-idx marked-element))
+          ;;      (edited-geometry (if edit-idx
+          ;;                           (2dd-build-idx-edited-geometry marked-element
+          ;;                                                          edit-idx
+          ;;                                                          delta)
+          ;;                         (2dd-build-move-edited-geometry marked-element
+          ;;                                                         delta))))
+          ;; (when edited-geometry
+          ;;   ;; TODO - make sure edited geometry doesn't clash with any siblings
+          ;;   (scxmld-update-drawing diagram marked-element edited-geometry)
+          ;;   (scxmld--queue-update-linked-xml diagram marked-element t)
+          ;;   ;; Evaluate if this edit might result in a drag-drop connection.
+          ;;   (scxmld--evaluate-possible-connection diagram marked-element)
+          ;;   t))
       nil)))
+(defun scxmld--modify-drawing (diagram marked-element delta)
+  "Modify DIAGRAM's MARKED-ELEMENT by DELTA (2dg-point).
+
+Return non-nil if the diagram should be rerendered."
+  (let* ((edit-idx (2dd-get-edit-idx marked-element))
+         (edited-geometry (if edit-idx
+                              (2dd-build-idx-edited-geometry marked-element
+                                                             edit-idx
+                                                             delta)
+                            (2dd-build-move-edited-geometry marked-element
+                                                            delta))))
+    (if edited-geometry
+        (progn
+          ;; TODO - make sure edited geometry doesn't clash with any siblings
+          (scxmld-update-drawing diagram marked-element edited-geometry)
+          (scxmld--queue-update-linked-xml diagram marked-element t)
+          ;; Evaluate if this edit might result in a drag-drop connection.
+          (scxmld--evaluate-possible-connection diagram marked-element)
+          t)
+      nil)))
+
+(defun scxmld--evaluate-possible-connection (diagram marked-element)
+  (scxmld-clear-possible-connection diagram)
+
+  (when (and (scxmld-transition-p marked-element)
+             (seq-empty-p (scxml-get-target-id marked-element))
+             (= (1- (2dd-num-edit-idxs marked-element))
+                (2dd-get-edit-idx marked-element)))
+    ;; check to see if the last edit idx point is *on* the edge of something.
+    (let* ((point (2dd-edit-idx-point marked-element
+                                      (1- (2dd-num-edit-idxs marked-element))))
+           (pixel (2dd-get-pixel (2dd-get-viewport diagram) point))
+           (selection-rect (2dd-get-coord (2dd-get-viewport diagram) pixel))
+           (targeted-element))
+      (block find-target-element
+        (scxml-visit (2dd-get-root diagram)
+                     (lambda (element)
+                       ;; all these elements have rectangular geometry
+                       (let* ((rectg (2dd-geometry element))
+                              (outer-shell (2dg-segments rectg)))
+                         (cl-loop for segment in outer-shell
+                                  when (2dg-has-intersection selection-rect
+                                                             segment
+                                                             'stacked)
+                                  do (progn
+                                       (setq targeted-element element)
+                                       (return-from find-target-element)))))
+                     (lambda (element)
+                       (or (scxml-state-class-p element)
+                           (scxml-final-class-p element)
+                           (scxml-parallel-class-p element)))))
+      (when targeted-element
+        (scxmld-set-highlight targeted-element t)
+        (scxmld-set-possible-connection diagram targeted-element)
+        (message "do you want to connect to: %s"
+                 (scxmld-pprint targeted-element))))))
+
 (defsubst scxmld--clear-possible-connection (diagram possible-connection)
   "clear any possible connection drawing info/artifacts."
   (scxmld-set-highlight possible-connection nil)
@@ -203,12 +231,36 @@ a rerender is needed."
     (if possible-connection
         (progn
           (scxmld--clear-possible-connection diagram possible-connection)
-          (let ((marked-element (scxmld-get-marked diagram)))
-            ;; Connect marked-drawing (a transition) to possible-connection
-            ;; as a target of marked-drawing
+
+          ;; TODO - the algorithm here does not seem ideal.
+          ;;
+          ;; I'm going to trigger an attribute edit on the transition
+          ;; to set the target to be the possible connection.  This
+          ;; will cause the transition to undergo a full replot in
+          ;; 'automatic' mode where everything is calculated.
+          ;;
+          ;; Once that's complete and everything is done (but possibly
+          ;; in the wrong place) I manually trigger an edit to correct
+          ;; the target point to be as close as possible to where the
+          ;; user wants it to be, this will also trigger a replot of
+          ;; (at least) the inner path.
+          ;;
+          ;; This is two operations which could probably be merged
+          ;; into one at some point if the plotter was able to take a
+          ;; hint.
+
+          (let* ((marked-element (scxmld-get-marked diagram))
+                 (num-edit-idxs (2dd-num-edit-idxs marked-element))
+                 (desired-target-point (2dd-edit-idx-point marked-element (1- num-edit-idxs))))
             (scxmld-modify-attribute diagram
                                      "target"
-                                     (scxml-get-id possible-connection))))
+                                     (scxml-get-id possible-connection))
+            (let* ((current-target-point (2dd-connection-point
+                                          (2dd-get-target-connector marked-element)))
+                   (delta (2dg-subtract desired-target-point
+                                        current-target-point)))
+              (2dd-set-edit-idx marked-element (1- (2dd-num-edit-idxs marked-element)))
+              (scxmld--modify-drawing diagram marked-element delta))))
       nil)))
 (cl-defmethod scxmld-autoplot-drawing ((diagram scxmld-diagram))
   "Attempt to autoplot whatever drawing is currently marked.
@@ -252,7 +304,6 @@ a rerender is needed."
                   (lambda (_) nil)      ;no children for now.
                   (lambda (_) t)        ;preserve whatever you can.
                   scxmld-plot-settings))
-
 
       (scxmld--queue-update-linked-xml diagram marked-element t)
       t)))
