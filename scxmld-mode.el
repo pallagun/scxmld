@@ -79,17 +79,22 @@
   (setq-local truncate-lines 't)
 
   ;; setup mouse handlers
-  (setq 2dd-mouse-hooks '((down-mouse-1 . scxmld-mouse-mark-at-point)
-                          (double-mouse-1 . scxmld-mouse-begin-edit-at-pixel)
-                          (drag-increment-mouse-1 . scxmld-mouse-drag-edit)
-                          (drag-increment-mouse-2 . scxmld-mouse-pan)
+  (setq 2dd-mouse-hooks
+        '(
+          ;; Mouse-1 is the main button for editing and such.
+          (down-mouse-1 . scxmld-mouse-mark-at-point)
+          (double-mouse-1 . scxmld-mouse-begin-edit-at-pixel)
+          (drag-increment-mouse-1 . scxmld-mouse-drag-edit)
+          (drag-increment-mouse-2 . scxmld-mouse-pan)
+          (drag-mouse-1 . scxmld-mouse-after-edit-at-pixel)
 
-                          ;; (down-mouse-3 . scxmld-mouse-menu)
-                          (mouse-3 . scxmld-mouse-menu)
+          ;; Mouse 3 is the secondary mouse button
+          (mouse-3 . scxmld-mouse-menu)
 
-                          (mouse-4 . scxmld-mouse-zoom-in)
-                          (mouse-5 . scxmld-mouse-zoom-out)
-                          (error . scxmld-error))))
+          ;; Mouse 4/5 are mouse wheel buttons.
+          (mouse-4 . scxmld-mouse-zoom-in)
+          (mouse-5 . scxmld-mouse-zoom-out)
+          (error . scxmld-error))))
 
 (defun scxmld-new-empty-diagram (name)
   "Make a brand new drawing of an empty <scxml> with NAME."
@@ -197,6 +202,14 @@ closest to the CLICKED-PIXEL."
          (click-centroid (2dg-centroid coordinate-area))
          (closest-info (2dd-get-closest-edit-idx marked-element click-centroid)))
     (scxmld-set-marked-element-edit-idx scxmld--diagram (car closest-info))
+    (scxmld-rerender)))
+(defun scxmld-mouse-after-edit-at-pixel (clicked-pixel last-drag total-drag)
+  "Complete a mouse drag edit saga.
+
+It is possible that the drag edit performed may have requested
+that a transition drawing was connected to a state/final/parallel
+drawing.  If so, complete that connection."
+  (when (scxmld-commit-possible-connection scxmld--diagram)
     (scxmld-rerender)))
 (defun scxmld-mouse-mark-at-point (clicked-pixel &rest drag-info)
   "Mouse hook for a user clicking on CLICKED-PIXEL.
