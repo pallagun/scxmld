@@ -311,6 +311,8 @@ Find the :target in SLOTS and properly set the 2dd-link drawing to use it as wel
                          (list :connector-offset (2dd-get-point-scaling viewport)
                                :link-start nil ;nothing at the start of transitions
                                :link-end 'arrow ;arrows at the ends of transitions
+                               :link-source 'circle
+                               :link-target 'circle
                                :end-style (if has-highlight
                                               'scxmld-outline-marked
                                             'scxmld-transition-arrow)

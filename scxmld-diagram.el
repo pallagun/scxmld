@@ -232,7 +232,7 @@ a rerender is needed."
         (progn
           (scxmld--clear-possible-connection diagram possible-connection)
 
-          ;; TODO - the algorithm here does not seem ideal.
+          ;; TODO - the algorithm here does not seem ideal:
           ;;
           ;; I'm going to trigger an attribute edit on the transition
           ;; to set the target to be the possible connection.  This
