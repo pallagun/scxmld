@@ -78,31 +78,30 @@ This string should not have the element type in it."
         id
       "?No-Id?")))
 
-
-(defclass scxmld-synthetic-element (scxml--core-nil scxml-element 2dd-drawing)
-  ()
-  :documentation "This class signifies that the object which is
-  drawn does not have a 1 to 1 correspondence with an scxml
-  element.")
-(defsubst scxmld-synthetic-element-class-p (any)
-  "Equivalent of (object-of-class-p ANY 'scxmld-synthetic-element element)."
-  (object-of-class-p any 'scxml-synthetic-element))
+;; (defclass scxmld-synthetic-element (scxml--core-nil scxml-element 2dd-drawing)
+;;   ()
+;;   :documentation "This class signifies that the object which is
+;;   drawn does not have a 1 to 1 correspondence with an scxml
+;;   element.")
+;; (defsubst scxmld-synthetic-element-class-p (any)
+;;   "Equivalent of (object-of-class-p ANY 'scxmld-synthetic-element element)."
+;;   (object-of-class-p any 'scxml-synthetic-element))
 
 (cl-defgeneric scxmld-pprint (element)
   "Pretty print ELEMENT for human eyeballs.")
 
-(cl-defgeneric scxmld-find-first-non-synthetic-ancestor (element)
-  "Find first ancestor that is not synthetic."
-  (error "Must implement for type: %s"
-         (eieio-object-class-name element)))
-(cl-defmethod scxmld-find-first-non-synthetic-ancestor ((element scxmld-element))
-  "Find first ancestor that is not synthetic."
-  (scxml-parent element))
-(cl-defmethod scxmld-find-first-non-synthetic-ancestor ((element scxmld-synthetic-element))
-  "Find first ancestor that is not synthetic."
-  (scxml-find-ancestor-if element
-                          (lambda (e)
-                            (not (scxmld-synthetic-element-class-p e)))))
+;; (cl-defgeneric scxmld-find-first-non-synthetic-ancestor (element)
+;;   "Find first ancestor that is not synthetic."
+;;   (error "Must implement for type: %s"
+;;          (eieio-object-class-name element)))
+;; (cl-defmethod scxmld-find-first-non-synthetic-ancestor ((element scxmld-element))
+;;   "Find first ancestor that is not synthetic."
+;;   (scxml-parent element))
+;; (cl-defmethod scxmld-find-first-non-synthetic-ancestor ((element scxmld-synthetic-element))
+;;   "Find first ancestor that is not synthetic."
+;;   (scxml-find-ancestor-if element
+;;                           (lambda (e)
+;;                             (not (scxmld-synthetic-element-class-p e)))))
 
 (defclass scxmld-with-highlight ()
   ((highlight :initarg :highlight
@@ -116,6 +115,21 @@ This string should not have the element type in it."
   "Validate the highlight value being set as strictly 't or 'nil."
   (unless (or (eq value nil) (eq value t))
     (error "Highlight values must be strictly 't or 'nil")))
+
+(defclass scxmld-with-synthetic-initial ()
+  ((point :initform nil
+          :reader scxmld-set-synthetic-initial-point
+          :writer scxmld-get-synthetic-initial-point
+          :type (or null 2dd-point))
+   (link :initform nil
+         :reader scxmld-set-synthetic-initial-link
+         :writer scxmld-get-synthetic-initial-link
+         :type (or null 2dd-link)))
+  :abstract t
+  :documentation "Indicates that an scxmld element has an
+  'initial' attribute of significance and that this attribute
+  should be drawn as a point and link indicating the target of
+  the initial attribute.")
 
 
 (provide 'scxmld-element)

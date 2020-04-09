@@ -50,7 +50,7 @@
   :group 'scxmld-faces)
 
 ;; Drawable elements
-(defclass scxmld-scxml (2dd-rect scxmld-element scxml-scxml scxmld-with-highlight)
+(defclass scxmld-scxml (2dd-rect scxmld-element scxml-scxml scxmld-with-highlight scxmld-with-synthetic-initial)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-scxml))
   "Pretty print this <scxml> ELEMENT."
@@ -100,7 +100,8 @@ Special cases here are: name, initial, datamodel and binding."
     (if name
         name
       "?No-Name?")))
-
+(cl-defmethod scxml-set-initial :after ((scxml scxml-scxml) initial)
+  (message "make a synth element"))
 
 (defsubst scxmld--parent-is-parallel-p (any)
   "Return true if ANY's parent is a <parallel> element."
@@ -291,6 +292,10 @@ Special cases here are: id"
 Find the :target in SLOTS and properly set the 2dd-link drawing to use it as well"
   (let ((instance (cl-call-next-method)))
     (2dd-set-constraint instance 'free)
+    ;; The below line will always fail, when the transition is first
+    ;; created it won't yet be a part of the element graph and will
+    ;; not be able to find its target.
+    ;; (scxmld--transition-update-target-drawing instance (plist-get slots :target))
     instance))
 (cl-defmethod scxmld-pprint ((element scxmld-transition))
   "Pretty print this <transition> ELEMENT."
@@ -302,7 +307,8 @@ Find the :target in SLOTS and properly set the 2dd-link drawing to use it as wel
             (scxml-get-target-id element)
             (2dd-pprint element))))
 (cl-defmethod 2dd-render ((element scxmld-transition) scratch x-transformer y-transformer viewport &rest style-plist)
-  (let ((has-highlight (scxmld-get-highlight element)))
+  (let ((has-highlight (scxmld-get-highlight element))
+        (parent (scxml-parent element)))
     (cl-call-next-method element
                          scratch
                          x-transformer
@@ -311,7 +317,9 @@ Find the :target in SLOTS and properly set the 2dd-link drawing to use it as wel
                          (list :connector-offset (2dd-get-point-scaling viewport)
                                :link-start nil ;nothing at the start of transitions
                                :link-end 'arrow ;arrows at the ends of transitions
-                               :link-source 'circle
+                               :link-source (if (scxmld-initial-p parent)
+                                                nil
+                                              'circle)
                                :link-target 'circle
                                :end-style (if has-highlight
                                               'scxmld-outline-marked
@@ -345,11 +353,9 @@ Special cases here are: target, event, cond, type"
   (2dd-set-source element nil)
   (2dd-set-target element nil)
   (2dd-clear-inner-path element))
-
 (cl-defmethod scxml-set-target-id :after ((element scxmld-transition) target-id)
   "When changing the target id of a transition, update the drawing as well."
   (scxmld--transition-update-target-drawing element target-id))
-
 (defsubst scxmld--transition-update-target-drawing (transition target-id)
   "Update TRANSITION's drawing to properly reflect a new TARGET-ID"
   (if (and target-id (not (seq-empty-p target-id)))
@@ -360,6 +366,42 @@ Special cases here are: target, event, cond, type"
           (2dd-set-target transition target-transition)))
     (2dd-set-target transition nil)))
 
+(defclass scxmld-initial (2dd-point scxmld-element scxml-initial scxmld-with-highlight)
+  ())
+(cl-defmethod scxmld-short-name ((element scxmld-initial))
+  "Return a string with the name of ELEMENT for display."
+  ;; TODO - this could be better.
+  "initial")
+(cl-defmethod 2dd-get-edit-idx ((initial scxmld-initial))
+  (error "scxmld-initial does not have any edit-idxs."))
+(cl-defmethod scxmld-pprint ((element scxmld-initial))
+  "Pretty print this <initial> ELEMENT."
+  (format "initial[[%s] %s]"
+          (if (scxmld-get-highlight element) "H" "")
+          (2dd-pprint element)))
+(cl-defmethod make-instance ((class (subclass scxmld-initial)) &rest slots)
+  "Ensure the drawing label matches the <final> element's id attribute."
+  (let ((instance (cl-call-next-method)))
+    (2dd-set-constraint instance 'captive+exclusive)
+    (2dd-set-label instance "I")
+    instance))
+(cl-defmethod 2dd-render ((point scxmld-initial) scratch x-transformer y-transformer viewport &rest style-plist)
+  (let ((has-highlight (scxmld-get-highlight point)))
+    (cl-call-next-method point
+                         scratch
+                         x-transformer
+                         y-transformer
+                         viewport
+                         (list :label-style (if has-highlight 'scxmld-label-marked nil)))))
+(cl-defmethod scxmld-put-attribute ((element scxmld-initial) (attribute-name string) attribute-value)
+  "Set ELEMENT's attribute with name ATTRIBUTE-NAME to be ATTRIBUTE-VALUE.
+
+When ATTRIBUTE-VALUE is nil the attribute will be deleted if possible.
+
+There are no special cases for <initial> elements."
+  (if attribute-value
+      (scxml-put-attrib element attribute-name attribute-value)
+    (scxml-delete-attrib element attribute-name)))
 
 
 (provide 'scxmld-elements)

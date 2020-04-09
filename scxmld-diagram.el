@@ -45,7 +45,8 @@
     (when (and currently-marked (not (eq currently-marked value)))
       ;; Put currently-marked back to normal display mode.
       (scxmld-set-highlight currently-marked nil)
-      (2dd-set-edit-idx currently-marked nil))))
+      (when (2dd-editable-drawing-class-p currently-marked)
+        (2dd-set-edit-idx currently-marked nil)))))
 (cl-defmethod scxmld-set-marked :after ((this scxmld-diagram) value)
   "After marking element VALUE, highlight it."
   (when value
@@ -71,17 +72,21 @@ Note: if the element's parent is <parallel> this will never
 enable edit-idx mode as that's not allowed."
   (with-slots (marked-element) diagram
     (if marked-element
-        (if (null edit-idx)
-            (progn
-              (2dd-set-edit-idx marked-element nil)
-              t)
-          ;; validate that you can go into edit-idx mode.
-          (if (scxmld--parent-is-parallel-p marked-element)
-              ;; Parent is a parallel, unable to enter edit-idx mode.
-              nil
-            ;; parent is non-parallel, you may enter edit-idx mode.
-            (2dd-set-edit-idx marked-element edit-idx)
-            t))
+        (progn
+          (assert (2dd-editable-drawing-class-p marked-element)
+                  t
+                  "scxmld-set-marked-element-edit-idx is not applicable to non-editable drawings")
+          (if (null edit-idx)
+              (progn
+                (2dd-set-edit-idx marked-element nil)
+                t)
+            ;; validate that you can go into edit-idx mode.
+            (if (scxmld--parent-is-parallel-p marked-element)
+                ;; Parent is a parallel, unable to enter edit-idx mode.
+                nil
+              ;; parent is non-parallel, you may enter edit-idx mode.
+              (2dd-set-edit-idx marked-element edit-idx)
+              t)))
       nil)))
 
 (cl-defmethod scxmld-toggle-marked-element-edit-idx-mode ((diagram scxmld-diagram) &optional force-on-or-off)
@@ -122,7 +127,7 @@ previous reasonable thing.  Returns non-nil if any changes were
 made."
    (let ((increment (max -1 (min 1 (or increment 1))))
          (marked-element (scxmld-get-marked diagram)))
-     (if marked-element
+     (if (2dd-editable-drawing-class-p marked-element)
        (let ((edit-idx (2dd-get-edit-idx marked-element)))
          (if edit-idx
              ;; An edit indxed is marked, move to the next one.
@@ -160,7 +165,8 @@ made."
   "Modify DIAGRAM's MARKED-ELEMENT by DELTA (2dg-point).
 
 Return non-nil if the diagram should be rerendered."
-  (let* ((edit-idx (2dd-get-edit-idx marked-element))
+  (let* ((edit-idx (and (2dd-editable-drawing-class-p marked-element)
+                        (2dd-get-edit-idx marked-element)))
          (edited-geometry (if edit-idx
                               (2dd-build-idx-edited-geometry marked-element
                                                              edit-idx
@@ -252,6 +258,9 @@ a rerender is needed."
           (let* ((marked-element (scxmld-get-marked diagram))
                  (num-edit-idxs (2dd-num-edit-idxs marked-element))
                  (desired-target-point (2dd-edit-idx-point marked-element (1- num-edit-idxs))))
+            (assert (scxmld-transition-p marked-element)
+                    t
+                    "Unable to commit a possible connection with anything other than a transition")
             (scxmld-modify-attribute diagram
                                      "target"
                                      (scxml-get-id possible-connection))
@@ -259,6 +268,7 @@ a rerender is needed."
                                           (2dd-get-target-connector marked-element)))
                    (delta (2dg-subtract desired-target-point
                                         current-target-point)))
+
               (2dd-set-edit-idx marked-element (1- (2dd-num-edit-idxs marked-element)))
               (scxmld--modify-drawing diagram marked-element delta))))
       nil)))
@@ -269,10 +279,19 @@ Autoplotting, at present, only works for links/transitions."
   (let ((marked-element (scxmld-get-marked diagram)))
     (if (and marked-element (2dd-link-class-p marked-element))
         (progn
-          ;; autoplot the inner path for now.
-          (2dd-replot-inner-path marked-element)
+          (if (2dd-edit-history-contains-p marked-element 'inner-path)
+              ;; the inner path is set.  Unset that and autoplot it.
+              (2dd-replot-inner-path marked-element)
+            ;; the inner path is not set, unset the connectors and replot everything.
+            (2dd-clear-location (2dd-get-target-connector marked-element))
+            (2dd-clear-location (2dd-get-source-connector marked-element))
+            (2dd-plot marked-element
+                      (2dd-get-inner-canvas (scxml-parent marked-element))
+                      #'scxmld-children
+                      (lambda (_) nil)
+                      scxmld-plot-settings)
           (scxmld--queue-update-linked-xml diagram marked-element t)
-          t)
+          t))
       nil)))
 (cl-defmethod scxmld-simplify-drawing ((diagram scxmld-diagram))
   "Simplify marked drawing if possible, return non-nil if there were any changes."
@@ -292,6 +311,27 @@ a rerender is needed."
     (if (null marked-element)
         ;; No element, nothing to update
         nil
+
+      ;; If marked-element is an element-with-id, ensure any
+      ;; transitions targeting it are also updated with the new target
+      ;; id.
+      (when (and (equal "id" attribute-name)
+                 (scxml-element-with-id-class-p marked-element))
+        (let ((old-id (scxml-get-id marked-element)))
+          (when (not (seq-empty-p old-id))
+            ;; valid old id, if there are any transitions targeting
+            ;; this, they must be updated.
+            (scxml-visit-all marked-element
+                             (lambda (transition)
+                               (when (equal old-id
+                                            (scxml-get-target-id transition))
+                                 (scxmld-put-attribute transition
+                                                       "target"
+                                                       attribute-value)
+                                 (scxmld--queue-update-linked-xml diagram
+                                                                  transition)))
+                             #'scxml-transition-class-p))))
+
       ;; Element marked, update the attribute.
       (scxmld-put-attribute marked-element attribute-name attribute-value)
 
@@ -322,6 +362,22 @@ a rerender is needed."
             (unless (2dd-validate-constraints new-child parent (scxml-children parent))
               (error "Child drawing geometry violates drawing constraints.")))
           (scxml-add-child parent new-child t)
+          ;; if the new child is a transition (which references
+          ;; another state by id) then reset that target id to link
+          ;; drawings (note: see (make-instance scxmld-transition) )
+          (when (scxmld-transition-p new-child)
+            (scxml-set-target-id new-child
+                                 (scxml-get-target-id new-child)))
+          ;; Also, if it's an <initial> element, check to see if it
+          ;; has a <transition> as a child, you'd be in the same
+          ;; situation then.
+          (when (scxmld-initial-p new-child)
+            (mapc (lambda (grandchild-transition)
+                    (scxml-set-target-id grandchild-transition
+                                         (scxml-get-target-id grandchild-transition)))
+                  (seq-filter 'scxmld-transition-p
+                              (scxml-children new-child))))
+
           (scxmld--queue-update-linked-xml diagram parent t)
           (setq success t))
         ;; (error (scxmld-log (format "Unable to add child: %s" err) 'error)))

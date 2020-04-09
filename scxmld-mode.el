@@ -45,6 +45,7 @@
     (define-key map (kbd "a S") 'scxmld-add-child-state-to-marked)
     (define-key map (kbd "a F") 'scxmld-add-child-final-to-marked)
     (define-key map (kbd "a T") 'scxmld-add-child-transition-to-marked)
+    (define-key map (kbd "a I") 'scxmld-add-child-initial-to-marked)
     (define-key map (kbd "e a") 'scxmld-edit-attribute)
     (define-key map (kbd "e i") 'scxmld-edit-id-attribute)
     (define-key map (kbd "e n") 'scxmld-edit-name-attribute)
@@ -164,7 +165,8 @@
      (setf (symbol-value value-sym)
            (progn ,@forms))
      (let* ((marked-element (scxmld-get-marked scxmld--diagram))
-            (edit-idx (and marked-element (2dd-get-edit-idx marked-element))))
+            (edit-idx (and (2dd-editable-drawing-class-p marked-element)
+                           (2dd-get-edit-idx marked-element))))
        (if edit-idx
            (scxmld-goto-point (2dd-edit-idx-point marked-element edit-idx))
          (scxmld-goto-pixel (symbol-value position-sym))))
@@ -184,7 +186,8 @@
     (delete-region (point-min) (point-max))
     (scxmld-render scxmld--diagram)
     (let* ((marked-element (scxmld-get-marked scxmld--diagram))
-           (edit-idx (and marked-element (2dd-get-edit-idx marked-element))))
+           (edit-idx (and (2dd-editable-drawing-class-p marked-element)
+                          (2dd-get-edit-idx marked-element))))
       (if edit-idx
           (scxmld-goto-point (2dd-edit-idx-point marked-element edit-idx))
         (goto-char current-point)))))
@@ -196,13 +199,14 @@ This will select the element and force it into edit-idx mode.
 Additionally it should begin edit-idx selection at the edit-idx
 closest to the CLICKED-PIXEL."
   (let* ((selection-area (scxmld--get-selection-rect-at-pixel clicked-pixel))
-         (marked-element (scxmld--get-selection-from-area selection-area))
-         (coordinate-area (2dd-get-coord (2dd-get-viewport scxmld--diagram) ;
-                                         clicked-pixel))
-         (click-centroid (2dg-centroid coordinate-area))
-         (closest-info (2dd-get-closest-edit-idx marked-element click-centroid)))
-    (scxmld-set-marked-element-edit-idx scxmld--diagram (car closest-info))
-    (scxmld-rerender)))
+         (marked-element (scxmld--get-selection-from-area selection-area)))
+    (when (2dd-editable-drawing-class-p marked-element)
+      (let* ((coordinate-area (2dd-get-coord (2dd-get-viewport scxmld--diagram) ;
+                                             clicked-pixel))
+             (click-centroid (2dg-centroid coordinate-area))
+             (closest-info (2dd-get-closest-edit-idx marked-element click-centroid)))
+        (scxmld-set-marked-element-edit-idx scxmld--diagram (car closest-info))
+        (scxmld-rerender)))))
 (defun scxmld-mouse-after-edit-at-pixel (clicked-pixel last-drag total-drag)
   "Complete a mouse drag edit saga.
 
@@ -422,7 +426,8 @@ If there is more than one thing there and one of them is already marked, leave i
       ;; if there is a selected drawing already and that drawing is in
       ;; edit-idx mode check to see if the user selected any of the
       ;; visible edit-idx pixels.  If so, switch to that edit-idx
-      (when (and marked-element (2dd-get-edit-idx marked-element))
+      (when (and (2dd-editable-drawing-class-p marked-element)
+                 (2dd-get-edit-idx marked-element))
         (let ((edit-idx-points (2dd-edit-idx-points marked-element))
               (clicked-idx))
           (cl-loop for edit-idx-point in edit-idx-points
@@ -437,8 +442,8 @@ If there is more than one thing there and one of them is already marked, leave i
       (let ((selection (scxmld--get-selection-from-area selection-area)))
         (scxmld-set-marked scxmld--diagram
                            selection)
-            (when selection
-              (scxmld-set-marked-element-edit-idx scxmld--diagram nil))))
+        (when (2dd-editable-drawing-class-p selection)
+          (scxmld-set-marked-element-edit-idx scxmld--diagram nil))))
     (scxmld-rerender)))
 (defun scxmld-toggle-edit-idx-mode (&optional force-on)
   "Enable edit idx mode to modify a drawing."
@@ -580,6 +585,14 @@ Note: zooming based on pixel does not yet work."
    (scxmld-transition :target (if (seq-empty-p (string-trim target-id))
                                   nil
                                 target-id))))
+(defun scxmld-add-child-initial-to-marked (target-id)
+  (interactive "sNew <initial> transition target: ")
+  (when (seq-empty-p target-id)
+    (error "An <initial> element must have a <transition> with a valid target."))
+  (let* ((initial (scxmld-initial))
+         (transition (scxmld-transition :target target-id)))
+    (scxml-add-child initial transition)
+    (scxmld-add-child-to-marked initial)))
 
 (defun scxmld-delete-attribute (attribute-name)
   (interactive "sAttribute Name:")
