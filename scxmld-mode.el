@@ -617,7 +617,7 @@ Note: zooming based on pixel does not yet work."
         (when (scxmld-modify-attribute scxmld--diagram
                                        attribute-name
                                        new-value)
-          (scxmld-rerender))))))
+          (scxmld-rerender t))))))
 (defun scxmld-edit-id-attribute (new-id)
   (interactive (list
                 (read-string "New id: "

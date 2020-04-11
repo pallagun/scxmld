@@ -116,20 +116,34 @@ This string should not have the element type in it."
   (unless (or (eq value nil) (eq value t))
     (error "Highlight values must be strictly 't or 'nil")))
 
+(defclass scxmld-synthetic-element ()
+  ()
+  :abstract t
+  :documentation "Marker class which indicates that an element is synthetic.  A synthetic element is one which is not a real <scxml> xml element, but is an object which needs to be drawn.")
 (defclass scxmld-with-synthetic-initial ()
-  ((point :initform nil
-          :reader scxmld-set-synthetic-initial-point
-          :writer scxmld-get-synthetic-initial-point
-          :type (or null 2dd-point))
-   (link :initform nil
-         :reader scxmld-set-synthetic-initial-link
-         :writer scxmld-get-synthetic-initial-link
-         :type (or null 2dd-link)))
+  ((synthetic-initial :initform nil
+                      :type (or null scxmld-synthetic-element)
+                      :reader scxmld-get-synthetic-initial
+                      :writer scxmld-set-synthetic-initial))
   :abstract t
   :documentation "Indicates that an scxmld element has an
   'initial' attribute of significance and that this attribute
   should be drawn as a point and link indicating the target of
   the initial attribute.")
+
+;; (cl-defgeneric scxmld-get-synthetic-initial-target-id ((element scxmld-with-synthetic-initial))
+;;   "Return the current target of ELEMENT's synthetic initial drawings."
+;;   (let ((synth-initial (oref element synthetic-initial)))
+;;     (if synth-initial
+;;         (let ((synth-transitions (scxml-children synth-initial)))
+;;           (assert (eq (length synth-transitions) 1)
+;;                 t
+;;                 "A synthetic initial element must have exactly one sythetic transition.")
+;;           (assert (scxml-transition-class-p (first synth-transitions))
+;;                 t
+;;                 "A synthetic initial element must have a child which is a transition")
+;;           (scxml-get-target-id (first synth-transitions)))
+;;       nil)))
 
 
 (provide 'scxmld-element)

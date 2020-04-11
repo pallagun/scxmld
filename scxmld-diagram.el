@@ -335,10 +335,42 @@ a rerender is needed."
       ;; Element marked, update the attribute.
       (scxmld-put-attribute marked-element attribute-name attribute-value)
 
+      ;; if marked-element is of type scxmld-with-synthetic-initial
+      ;; and the attribute name is initial then we'll have to set up
+      ;; or edit any synthetic elements.
+      (when (and (equal "initial" attribute-name)
+                 (scxmld-with-synthetic-initial-child-p marked-element))
+        (let ((current-initial (scxmld-get-synthetic-initial marked-element)))
+          ;; you may not have any synthetic initial in which case you'll need one.
+          (cond
+           ;; There is currently no synthetic initial but you should have one.
+           ((and (null current-initial)
+                 (not (seq-empty-p attribute-value)))
+            (let ((synth-initial (scxmld-synthetic-initial))
+                  (synth-transition (scxmld-synthetic-transition)))
+              ;; Use normal scxml mechanisms to link transition and initial.
+              (scxml-add-child synth-initial synth-transition)
+              ;; Use scxmld (not scxml) mechanisms to link initial to real parent.
+              (scxmld-set-synthetic-initial marked-element synth-initial)
+              (scxmld-set-synth-parent synth-initial marked-element)
+
+              (scxml-set-target-id synth-transition attribute-value)))
+
+           ;; There is a current synthetic initial but it needs to be removed.
+           ((and current-initial
+                 (seq-empty-p attribute-value))
+            (scxmld-set-synthetic-initial marked-element nil))
+
+           ;; There is a current synthetic initial but it needs to be changed.
+           ((and current-initial
+                 (not (equal (scxmld-get-synthetic-target-id current-initial)
+                             attribute-value)))
+            ))))
+
+      ;; You may have edited a transition such that it needs to be replotted.
       (when (and (scxmld-transition-p marked-element)
                  (equal attribute-name "target")
                  (2dd-needs-replot marked-element))
-        ;; You've edited a transition such that it needs to be replotted.
         (2dd-plot marked-element
                   (2dd-get-inner-canvas (scxml-parent marked-element))
                   (lambda (_) nil)      ;no children for now.
@@ -351,36 +383,40 @@ a rerender is needed."
   "Add NEW-CHILD to PARENT in DIAGRAM."
   (let ((success))
     ;; (condition-case err
-        (progn
-          (scxml-validate-add-child parent new-child)
-          ;; if the child comes with a geometry already set, validate that against drawing constraints.
-          (when (2dd-geometry new-child)
-            ;; Adding a child with geometry to a parallel parent is not allowed.
-            ;; parallel children have their geometry managed for them by the parent paralell.
-            (when (scxml-parallel-class-p parent)
-              (error "Unable to add a drawing with geometry to a parallel element."))
-            (unless (2dd-validate-constraints new-child parent (scxml-children parent))
-              (error "Child drawing geometry violates drawing constraints.")))
-          (scxml-add-child parent new-child t)
-          ;; if the new child is a transition (which references
-          ;; another state by id) then reset that target id to link
-          ;; drawings (note: see (make-instance scxmld-transition) )
-          (when (scxmld-transition-p new-child)
-            (scxml-set-target-id new-child
-                                 (scxml-get-target-id new-child)))
-          ;; Also, if it's an <initial> element, check to see if it
-          ;; has a <transition> as a child, you'd be in the same
-          ;; situation then.
-          (when (scxmld-initial-p new-child)
-            (mapc (lambda (grandchild-transition)
-                    (scxml-set-target-id grandchild-transition
-                                         (scxml-get-target-id grandchild-transition)))
-                  (seq-filter 'scxmld-transition-p
-                              (scxml-children new-child))))
+    (progn
 
-          (scxmld--queue-update-linked-xml diagram parent t)
-          (setq success t))
-        ;; (error (scxmld-log (format "Unable to add child: %s" err) 'error)))
+      ;; when adding an <initial> element, I'll let you add it without
+      ;; a transition at first
+      (unless (scxmld-initial-p new-child)
+        (scxml-validate-add-child parent new-child))
+      ;; if the child comes with a geometry already set, validate that against drawing constraints.
+      (when (2dd-geometry new-child)
+        ;; Adding a child with geometry to a parallel parent is not allowed.
+        ;; parallel children have their geometry managed for them by the parent paralell.
+        (when (scxml-parallel-class-p parent)
+          (error "Unable to add a drawing with geometry to a parallel element."))
+        (unless (2dd-validate-constraints new-child parent (scxml-children parent))
+          (error "Child drawing geometry violates drawing constraints.")))
+      (scxml-add-child parent new-child t)
+      ;; if the new child is a transition (which references
+      ;; another state by id) then reset that target id to link
+      ;; drawings (note: see (make-instance scxmld-transition) )
+      (when (scxmld-transition-p new-child)
+        (scxml-set-target-id new-child
+                             (scxml-get-target-id new-child)))
+      ;; Also, if it's an <initial> element, check to see if it
+      ;; has a <transition> as a child, you'd be in the same
+      ;; situation then.
+      (when (scxmld-initial-p new-child)
+        (mapc (lambda (grandchild-transition)
+                (scxml-set-target-id grandchild-transition
+                                     (scxml-get-target-id grandchild-transition)))
+              (seq-filter 'scxmld-transition-p
+                          (scxml-children new-child))))
+
+      (scxmld--queue-update-linked-xml diagram parent t)
+      (setq success t))
+    ;; (error (scxmld-log (format "Unable to add child: %s" err) 'error)))
     success))
 (cl-defmethod scxmld-delete-element ((diagram scxmld-diagram) (element-to-delete scxmld-element))
   "Delete ELEMENT-TO-DELETE from DIAGRAM"
@@ -441,6 +477,12 @@ a rerender is needed."
           updates))
   ;; clear the queue
   (oset diagram queued-xml-updates nil))
+(cl-defmethod scxmld-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-synthetic-element) &optional include-children start-at-point)
+  "Update a synthetic elements xml - bounce to the parent, it's that elements job to hold this info."
+  (scxmld-update-linked-xml diagram
+                            (scxml-parent changed-element)
+                            nil
+                            start-at-point))
 (cl-defmethod scxmld-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children start-at-point)
   "Given a DIAGRAM and a newly updated CHANGED-ELEMENT, update the linked xml buffer.
 
@@ -470,12 +512,13 @@ It is assumed that xmltok has already been initialized for this buffer."
           (when include-children
             ;; scan for all child xml-tags and delete any that are missing.
             (let ((child-tags (scxmld-children tag))
-                  (child-elements (scxml-children changed-element))
+                  (document-child-elements (scxml-children changed-element))
+                  (drawing-child-elements (scxmld-children changed-element))
                   (elements-to-prune)
                   (tags-to-prune))
               (cl-loop for child in child-tags
                        for linked-element = (scxmld-get-mark child)
-                       when (not (memq linked-element child-elements))
+                       when (not (memq linked-element document-child-elements))
                        do (progn (push child tags-to-prune)
                                  (push linked-element elements-to-prune)))
               (when tags-to-prune
@@ -484,10 +527,20 @@ It is assumed that xmltok has already been initialized for this buffer."
                 (mapc #'scxmld-delete tags-to-prune))
 
               ;; update all the children or create them if they're new.
-              (cl-loop for child in child-elements
+              (cl-loop for child in document-child-elements
                        when (not (memq child elements-to-prune))
                          ;; TODO: change that last nil back to a t when debugging is easier.
-                         do (scxmld-update-linked-xml diagram child t nil)))))))))
+                         do (scxmld-update-linked-xml diagram child t nil))
+              ;; Update any drawing child elements that are not
+              ;; document child elements.
+              (cl-loop for other-child in (set-difference drawing-child-elements
+                                                          document-child-elements)
+                       do (scxmld-update-linked-xml diagram
+                                                    other-child
+                                                    t
+                                                    nil))
+
+              )))))))
 
 ;; actions
 (cl-defgeneric scxmld-plot ((diagram scxmld-diagram))
@@ -576,6 +629,6 @@ Warning: will destroy all contents of the linked buffer."
 
 (cl-defmethod scxmld-find-drawing-selection ((diagram scxmld-diagram) (selection-rect 2dg-rect))
   ;; TODO - I'm pretty sure this should be a defalias?
-  (2dd-find-drawing-selection diagram selection-rect #'scxml-children))
+  (2dd-find-drawing-selection diagram selection-rect #'scxmld-children))
 
 (provide 'scxmld-diagram)

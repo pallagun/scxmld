@@ -84,7 +84,11 @@
 
 When ATTRIBUTE-VALUE is nil the attribute will be deleted if possible.
 
+Empty strings will be converted to nil values.
+
 Special cases here are: name, initial, datamodel and binding."
+  (when (seq-empty-p attribute-value)
+    (setq attribute-value nil))
   (pcase attribute-name
     ("name" (scxml-set-name element attribute-value))
     ("initial" (scxml-set-initial element attribute-value))
@@ -102,6 +106,30 @@ Special cases here are: name, initial, datamodel and binding."
       "?No-Name?")))
 (cl-defmethod scxml-set-initial :after ((scxml scxml-scxml) initial)
   (message "make a synth element"))
+(cl-defmethod scxmld-children ((scxml scxmld-scxml))
+  "Return the children of the SCXML element."
+  (let ((synth-initial (scxmld-get-synthetic-initial scxml)))
+    (if synth-initial
+        (append (list synth-initial)
+                (cl-call-next-method))
+      (cl-call-next-method))))
+(cl-defmethod 2dd-serialize-geometry ((scxml scxmld-scxml))
+  "serialize multiple geometry objects if possible?
+
+TODO - this really needs to be refactored."
+  (let* ((parent-geo-string (cl-call-next-method))
+         (synth-initial (scxmld-get-synthetic-initial scxml))
+         (synth-initial-geo-string (when synth-initial
+                                     (2dd-serialize-geometry synth-initial)))
+         (synth-transition (when synth-initial
+                             (first (scxmld-children synth-initial))))
+         (synth-transition-geo-string (when synth-transition
+                                        (2dd-serialize-geometry synth-transition))))
+    (mapconcat #'identity
+               (list parent-geo-string
+                     synth-initial-geo-string
+                     synth-transition-geo-string)
+               " ")))
 
 (defsubst scxmld--parent-is-parallel-p (any)
   "Return true if ANY's parent is a <parallel> element."
@@ -114,6 +142,11 @@ Special cases here are: name, initial, datamodel and binding."
 
 Returns a list of elements.  May return nil if there are no
 targeting transitions."
+  ;; TODO - setup a single state in an scxml, give the scxml an
+  ;; initial attribute that references that state.  Modify the state
+  ;; drawing such that the synthetic initial's transition arrow will
+  ;; be reploted - note this function get's hit twice.  Why??  It
+  ;; should only be getting hit once.
   (when (scxml-element-with-id-class-p element)
     (let ((id (scxml-get-id element)))
       (unless (seq-empty-p id)
@@ -122,7 +155,8 @@ targeting transitions."
                            (lambda (transition)
                              (when (equal id (scxml-get-target-id transition))
                                (push transition targeting-transitions)))
-                           #'scxml-transition-class-p)
+                           #'scxml-transition-class-p
+                           #'scxmld-children)
           targeting-transitions)))))
 
 (defclass scxmld-state (2dd-rect scxmld-element scxml-state scxmld-with-highlight)
@@ -317,7 +351,7 @@ Find the :target in SLOTS and properly set the 2dd-link drawing to use it as wel
                          (list :connector-offset (2dd-get-point-scaling viewport)
                                :link-start nil ;nothing at the start of transitions
                                :link-end 'arrow ;arrows at the ends of transitions
-                               :link-source (if (scxmld-initial-p parent)
+                               :link-source (if (scxml-initial-class-p parent);; (scxmld-initial-p parent)
                                                 nil
                                               'circle)
                                :link-target 'circle
@@ -402,6 +436,47 @@ There are no special cases for <initial> elements."
   (if attribute-value
       (scxml-put-attrib element attribute-name attribute-value)
     (scxml-delete-attrib element attribute-name)))
+
+(defclass scxmld-synthetic-transition (scxmld-transition scxmld-synthetic-element)
+  ()
+  :documentation "Used to represent a transition from a scxmld-synthetic-initial.")
+
+(defclass scxmld-synthetic-initial (scxmld-initial scxmld-synthetic-element)
+  ((synth-parent :initform nil
+                 :reader scxmld-get-synth-parent
+                 :writer scxmld-set-synth-parent
+                 :type (or null scxmld-element)))
+  :documentation "Used to represent an initial attribute, not an element.")
+(cl-defmethod make-instance ((class (subclass scxmld-synthetic-initial)) &rest slots)
+  "Ensure the drawing label matches the <final> element's id attribute."
+  (let ((instance (cl-call-next-method)))
+    ;; (2dd-set-constraint instance 'captive+exclusive)
+    (assert (slot-boundp instance '_constraint)
+            t
+            "The constraints slot needs to be bound here.")
+    (assert (eq (2dd-get-constraint instance) 'captive+exclusive)
+            t
+            "The constraints for this should be setup and should be captive+exclusive")
+    (2dd-set-label instance "i")
+    instance))
+(cl-defmethod scxml-parent ((element scxmld-synthetic-initial))
+  ;; TODO - For now I'm hijacking the scxml graph to handle this.
+  "Return the parent of ELEMENT."
+  (scxmld-get-synth-parent element))
+
+(cl-defgeneric scxmld-get-synthetic-target-id ((element scxmld-synthetic-initial))
+  "Return the current target of ELEMENT's synthetic transition drawings."
+  (let ((synth-transitions (scxml-children synth-initial)))
+    (assert (eq (length synth-transitions) 1)
+            t
+            "A synthetic initial element must have exactly one sythetic transition.")
+    (assert (scxml-transition-class-p (first synth-transitions))
+            t
+            "A synthetic initial element must have a child which is a transition")
+    (scxml-get-target-id (first synth-transitions))))
+
+
+
 
 
 (provide 'scxmld-elements)
