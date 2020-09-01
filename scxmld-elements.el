@@ -15,7 +15,6 @@
   '((t :foreground "yellow"))
   "Edit idx style for any drawing."
   :group 'scxmld-faces)
-
 (defface scxmld-scxml-outline
   '((t :foreground "orange"))
   "scxmld-scxml outlines style."
@@ -50,7 +49,9 @@
   :group 'scxmld-faces)
 
 ;; Drawable elements
-(defclass scxmld-scxml (2dd-rect scxmld-element scxml-scxml scxmld-with-highlight scxmld-with-synthetic-initial)
+;; (defclass scxmld-scxml (2dd-rect scxmld-element scxml-scxml scxmld-with-highlight scxmld-with-synthetic-initial)
+;;   ())
+(defclass scxmld-scxml (2dd-rect scxmld-with-synthetic-initial scxmld-element scxml-scxml scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-scxml))
   "Pretty print this <scxml> ELEMENT."
@@ -105,20 +106,14 @@ Special cases here are: name, initial, datamodel and binding."
         name
       "?No-Name?")))
 (cl-defmethod scxml-set-initial :after ((scxml scxml-scxml) initial)
+  ;; TODO: why is this here?
   (message "make a synth element"))
-(cl-defmethod scxmld-children ((scxml scxmld-scxml))
-  "Return the children of the SCXML element."
-  (let ((synth-initial (scxmld-get-synthetic-initial scxml)))
-    (if synth-initial
-        (append (list synth-initial)
-                (cl-call-next-method))
-      (cl-call-next-method))))
 (cl-defmethod 2dd-serialize-geometry ((scxml scxmld-scxml))
   "serialize multiple geometry objects if possible?
 
 TODO - this really needs to be refactored."
   (let* ((parent-geo-string (cl-call-next-method))
-         (synth-initial (scxmld-get-synthetic-initial scxml))
+         (synth-initial (scxmld-get-synth-initial scxml))
          (synth-initial-geo-string (when synth-initial
                                      (2dd-serialize-geometry synth-initial)))
          (synth-transition (when synth-initial
@@ -155,11 +150,13 @@ targeting transitions."
                            (lambda (transition)
                              (when (equal id (scxml-get-target-id transition))
                                (push transition targeting-transitions)))
-                           #'scxml-transition-class-p
+                           (lambda (element)
+                             (or (scxml-transition-class-p element)
+                                 (scxmld-synthetic-transition-p element)))
                            #'scxmld-children)
           targeting-transitions)))))
 
-(defclass scxmld-state (2dd-rect scxmld-element scxml-state scxmld-with-highlight)
+(defclass scxmld-state (2dd-rect scxmld-with-synthetic-initial scxmld-element scxml-state scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-state))
   "Pretty print this <state> ELEMENT."
@@ -324,7 +321,14 @@ Special cases here are: id"
   "Ensure the transition is set up correctly and poperly setup source and target drawing connectors.
 
 Find the :target in SLOTS and properly set the 2dd-link drawing to use it as well"
-  (let ((instance (cl-call-next-method)))
+  ;; something is wrong here.
+  (message "make-instance scxmld-transition")
+  (message "------------- has next method: %s" (cl-next-method-p))
+
+  
+  (let (;; (what (cl-next-method-p))
+        ;; (other (cl-generic-current-method-specializers))
+        (instance (cl-call-next-method)))
     (2dd-set-constraint instance 'free)
     ;; The below line will always fail, when the transition is first
     ;; created it won't yet be a part of the element graph and will
@@ -342,7 +346,8 @@ Find the :target in SLOTS and properly set the 2dd-link drawing to use it as wel
             (2dd-pprint element))))
 (cl-defmethod 2dd-render ((element scxmld-transition) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight element))
-        (parent (scxml-parent element)))
+        (parent (scxmld-parent element)))
+    (assert parent t "Unable to determine parent in scxml tree")
     (cl-call-next-method element
                          scratch
                          x-transformer
@@ -437,9 +442,16 @@ There are no special cases for <initial> elements."
       (scxml-put-attrib element attribute-name attribute-value)
     (scxml-delete-attrib element attribute-name)))
 
+;; TODO - these two elements really need their own graph edges.  Right
+;; now there is a barely sufficient isolation, that's not ideal.
 (defclass scxmld-synthetic-transition (scxmld-transition scxmld-synthetic-element)
   ()
   :documentation "Used to represent a transition from a scxmld-synthetic-initial.")
+(cl-defmethod make-instance ((class (subclass scxmld-synthetic-transition)) &rest slots)
+  "make it"
+  ;; TODO - I don't think I need this anymore
+  (message "make-instance scxmld-synthetic-transition")
+  (cl-call-next-method))
 
 (defclass scxmld-synthetic-initial (scxmld-initial scxmld-synthetic-element)
   ((synth-parent :initform nil
@@ -459,11 +471,12 @@ There are no special cases for <initial> elements."
             "The constraints for this should be setup and should be captive+exclusive")
     (2dd-set-label instance "i")
     instance))
-(cl-defmethod scxml-parent ((element scxmld-synthetic-initial))
-  ;; TODO - For now I'm hijacking the scxml graph to handle this.
-  "Return the parent of ELEMENT."
-  (scxmld-get-synth-parent element))
-
+;; (cl-defmethod scxml-parent ((element scxmld-synthetic-initial))
+;;   ;; TODO - For now I'm hijacking the scxml graph to handle this.
+;;   ;; this needs to be fixed because I'm not doing the same for
+;;   ;; scxmld-synthetic-transition
+;;   "Return the parent of ELEMENT."
+;;   (scxmld-get-synth-parent element))
 (cl-defgeneric scxmld-get-synthetic-target-id ((element scxmld-synthetic-initial))
   "Return the current target of ELEMENT's synthetic transition drawings."
   (let ((synth-transitions (scxml-children synth-initial)))
