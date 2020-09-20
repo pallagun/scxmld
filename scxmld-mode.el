@@ -351,7 +351,7 @@ be selected directly."
     ;; TODO - it may not be possible to set from a selection-area.
     (2dd-set-geometry new-element selection-area)
     ;; add the child to the currently marked element.
-    (scxmld-add-child scxmld--diagram marked new-element)
+    (scxmld-diagram-add-child scxmld--diagram marked new-element)
     ;; set the new-element to be the marked element
     (scxmld-set-marked scxmld--diagram new-element)
     ;; Drop the new element into edit-idx mode.

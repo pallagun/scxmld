@@ -428,7 +428,7 @@ a rerender is needed."
 
       (scxmld--queue-update-linked-xml diagram marked-element t)
       t)))
-(cl-defmethod scxmld-diag-add-child ((diagram scxmld-diagram) (parent scxmld-element) (new-child scxmld-element))
+(cl-defmethod scxmld-diagram-add-child ((diagram scxmld-diagram) (parent scxmld-element) (new-child scxmld-element))
   "Add NEW-CHILD to PARENT in DIAGRAM."
   (let ((success))
     ;; (condition-case err
@@ -457,7 +457,12 @@ a rerender is needed."
       ;;       (scxmld-set-synth-parent new-child parent)
       ;;       (scxmld-set-synth-initial parent new-child))
       ;;   (scxml-add-child parent new-child t))
-      (scxml-add-child parent new-child t)
+
+      
+      (scxmld-add-child parent new-child t)
+      ;; (scxml-add-child parent new-child t)
+
+      
       ;; if the new child is a transition (which references
       ;; another state by id) then reset that target id to link
       ;; drawings (note: see (make-instance scxmld-transition) )
@@ -541,10 +546,16 @@ a rerender is needed."
   (oset diagram queued-xml-updates nil))
 (cl-defmethod scxmld-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-synthetic-element) &optional include-children start-at-point)
   "Update a synthetic elements xml - bounce to the parent, it's that elements job to hold this info."
-  (scxmld-update-linked-xml diagram
-                            (scxml-parent changed-element)
-                            nil
-                            start-at-point))
+  (cl-labels ((first-real-parent
+               (element)
+               (if (scxmld-synthetic-element-class-p element)
+                   (first-real-parent (first
+                                       (scxmld-parents element)))
+                 element)))
+    (scxmld-update-linked-xml diagram
+                              (first-real-parent changed-element)
+                              nil
+                              start-at-point)))
 (cl-defmethod scxmld-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children start-at-point)
   "Given a DIAGRAM and a newly updated CHANGED-ELEMENT, update the linked xml buffer.
 
@@ -628,9 +639,8 @@ Return non-nil if update completes.  Update may not complete.")
   "Update ELEMENT in DIAGRAM to have UPDATED-GEOMETRY.
 Return non-nil if update completes, nil otherwise.  Update may
 not complete."
-  (let ((parent (scxml-parent element))
+  (let ((parent (first (scxmld-parents element)))
         (siblings (scxml-siblings element)))
-    (error "is this getting all the children?? I don't think it is.")
     (2dd-update-plot element
                      updated-geometry
                      #'scxmld-children
