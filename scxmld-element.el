@@ -338,11 +338,14 @@ This function will not return any children from the normal
     (seq-filter 'identity
                 (append diagram-children
                         children))))
-(cl-defgeneric scxmld-add-diagram-child ((parent scxmld-with-diagram-children) (child scxmld-with-diagram-parents))
+(cl-defgeneric scxmld-add-diagram-child ((parent scxmld-with-diagram-children) (child scxmld-with-diagram-parents) &optional append)
   "Add CHILD as a diagram graph child of PARENT.
 
+When APPEND is non-nill CHILD will become the last child.  When
+APPEND is nil CHILD will become th efirst child.
+
 Much like scxml-add-child but for the diagram graph")
-(cl-defmethod  scxmld-add-diagram-child ((parent scxmld-with-diagram-children) (child scxmld-with-diagram-parents))
+(cl-defmethod scxmld-add-diagram-child ((parent scxmld-with-diagram-children) (child scxmld-with-diagram-parents) &optional append)
   "Add CHILD as a diagram graph child of PARENT.
 
 Much like scxml-add-child but for the diagram graph"
@@ -350,12 +353,21 @@ Much like scxml-add-child but for the diagram graph"
   (when (or (member* child (oref parent diagram-children) :test 'eq)
             (member* child (scxml-children parent) :test 'eq))
     (error "Unable to add child parent relationship on diagram graph, the parent seems to already have a relationship with the child."))
-
   (when (member* parent (scxmld-parents child) :test 'eq)
     (error "Unable to add child parent relationship on diagram graph, the child seems to already have a relationship with the parent."))
 
-  (push child (oref parent diagram-children))
-  (push parent (oref child diagram-parents)))
+  (if append
+      (progn
+        (oset parent
+              diagram-children
+              (nconc (oref parent diagram-children)
+                     (list child)))
+        (oset child
+              diagram-parents
+              (nconc (oref child diagram-parents)
+                     (list parent))))
+    (push child (oref parent diagram-children))
+    (push parent (oref child diagram-parents))))
 
 (cl-defgeneric scxmld-remove-diagram-child ((parent scxmld-with-diagram-children) (child scxmld-with-diagram-parents))
   "Break CHILD away from ELEMENT on the diagramr graph.")

@@ -106,14 +106,12 @@
       (should (null (scxml-children synth-initial)))
       (should (eq 1 (length (scxmld-children synth-initial))))
       (should (member* synth-transition (scxmld-children synth-initial) :test 'eq))
-
       
       (should (null (scxml-children synth-transition)))
       (should (null (scxmld-children synth-transition)))
       (should (null (scxml-parent synth-transition)))
       (should (eq 1 (length (scxmld-parents synth-transition))))
       (should (member* synth-initial (scxmld-parents synth-transition) :test 'eq))
-
 
       (scxmld-add-child scxml synth-initial)
 
@@ -130,6 +128,7 @@
       ;; at this point the synth transition should have two parents,
       ;; both of them diagram graph edges.
       (should (eq 2 (length (scxmld-parents synth-transition))))
+      (should (eq synth-initial (first (scxmld-parents synth-transition))))
       (should (member* synth-initial (scxmld-parents synth-transition) :test 'eq))
       (should (member* state (scxmld-parents synth-transition) :test 'eq))
       (should (eq 2 (length (scxmld-get-diagram-parents synth-transition))))

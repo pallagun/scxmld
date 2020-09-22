@@ -421,7 +421,7 @@ a rerender is needed."
                  (equal attribute-name "target")
                  (2dd-needs-replot marked-element))
         (2dd-plot marked-element
-                  (2dd-get-inner-canvas (scxml-parent marked-element))
+                  (2dd-get-inner-canvas (first (scxmld-parents marked-element)))
                   (lambda (_) nil)      ;no children for now.
                   (lambda (_) t)        ;preserve whatever you can.
                   scxmld-plot-settings))
@@ -449,7 +449,7 @@ a rerender is needed."
         ;; parallel children have their geometry managed for them by the parent paralell.
         (when (scxml-parallel-class-p parent)
           (error "Unable to add a drawing with geometry to a parallel element."))
-        (unless (2dd-validate-constraints new-child parent (scxml-children parent))
+        (unless (2dd-validate-constraints new-child parent (scxmld-children parent))
           (error "Child drawing geometry violates drawing constraints.")))
 
       ;; (if (scxmld-synthetic-initial-p new-child)

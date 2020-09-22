@@ -409,7 +409,9 @@ Special cases here are: target, event, cond, type"
     (_ (if attribute-value
            (scxml-put-attrib element attribute-name attribute-value)
          (scxml-delete-attrib element attribute-name)))))
-(cl-defmethod scxml-add-child :after ((parent scxmld-element) (transition scxmld-transition) &optional append)
+
+;; this was scxml-add-child :after, but it was changed
+(cl-defmethod scxmld-add-child :after ((parent scxmld-element) (transition scxmld-transition) &optional append)
   "Ensure that the 2dd drawing connections are updated after this add."
   ;; TODO - there should be another update for make-orphan
   (2dd-set-source transition parent)
@@ -446,7 +448,7 @@ Special cases here are: target, event, cond, type"
   "Update TRANSITION's drawing to properly reflect a new TARGET-ID"
   (if (and target-id (not (seq-empty-p target-id)))
       (let ((target-transition (scxml-element-find-by-id
-                                (scxml-root-element transition)
+                                (scxmld-root-element transition)
                                 target-id)))
         (when target-transition
           (2dd-set-target transition target-transition)))
@@ -517,7 +519,7 @@ Special cases here are: target, event, cond, type"
                     ;;                       :test 'eq))
                     ;;         t
                     ;;         "Found child tree transition is _already_ linked to parent tree target?")
-                    (scxmld-add-diagram-child parent-tree-target child-tree-transition))))))
+                    (scxmld-add-diagram-child parent-tree-target child-tree-transition t))))))
           child-tree-transitions)
     ;; find any transitions in the parent tree which direct to
     ;; elements existing in the child tree and link them up
@@ -536,7 +538,7 @@ Special cases here are: target, event, cond, type"
                     ;;                  (scxmld-get-diagram-children child-tree-target)))
                     ;;         t
                     ;;         "Found parent tree transition is _already_ linked to child tree target?")
-                    (scxmld-add-diagram-child child-tree-target parent-tree-transition))))))
+                    (scxmld-add-diagram-child child-tree-target parent-tree-transition t))))))
           parent-tree-transitions)
     ))
 
@@ -611,7 +613,6 @@ transition and the second will be the target (if it exists)."
     (let ((diagram-parent (second diagram-parents)))
       (when diagram-parent
         (scxmld-make-orphan element diagram-parent)))))
-
 
 (defclass scxmld-synthetic-initial (scxmld-with-diagram-parents
                                     scxmld-with-diagram-children
