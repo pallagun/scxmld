@@ -227,10 +227,14 @@ Return non-nil if the diagram should be rerendered."
                            (scxml-final-class-p element)
                            (scxml-parallel-class-p element)))))
       (when targeted-element
-        (scxmld-set-highlight targeted-element t)
-        (scxmld-set-possible-connection diagram targeted-element)
-        (message "do you want to connect to: %s"
-                 (scxmld-pprint targeted-element))))))
+        (if (seq-empty-p (scxml-get-id targeted-element))
+            ;; Unable to connect when there is no valid target=
+            ;; attribute on the targeted-element
+            (scxmld-message "Unable to connect, element has no valid id set")
+          (scxmld-set-highlight targeted-element t)
+          (scxmld-set-possible-connection diagram targeted-element)
+          (scxmld-message (format "Possible connection:: %s"
+                                  (scxmld-pprint targeted-element))))))))
 
 (defsubst scxmld--clear-possible-connection (diagram possible-connection)
   "clear any possible connection drawing info/artifacts."

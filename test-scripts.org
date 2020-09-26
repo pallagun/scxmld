@@ -1,8 +1,16 @@
 * Manual test scripts
-** 
+** synthetic initial+transitions should cause <scxml> elements to properl update their attributes in linked xml buffers
 1. Create new blank document.
 2. By mouse only add one <state> to the scxml, edit the <state> to have a valid id.
 3. By mouse only add an initial= to the scxml.
 4. By mouse only add a transition to the initial=
 5. By mouse only connect the end of that transition to the <state>
 Confirm - in the xml the <scxml> has a proper initial= attribute.
+
+** synthetic initial+transitions should refuse a mouse connect when the target state does not have an id set
+1. Create new blank document.
+2. By mouse only add one <state> to the scxml, ensure the <state> has _no_ valid id!
+3. By mouse only add an initial= to the scxml.
+4. By mouse only add a transition to the initial=
+5. By mouse only connect the end of that transition to the <state>
+Confirm - No error, but a message should be displayed describing that you can't auto-connect without an id set on the <state>.

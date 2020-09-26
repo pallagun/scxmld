@@ -52,6 +52,13 @@
     (funcall route (format "%s: %s"
                            level
                            msg))))
+(defun scxmld-message (msg)
+  "Inform the user of MSG.
+
+This is not intended for logging, more for normal and direct
+communications with the current user for purposes of using the
+application."
+  (message msg))
 
 (require 'scxmld-element)
 (require 'scxmld-elements)
