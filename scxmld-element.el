@@ -103,7 +103,7 @@ the scxml graph."
   "Make CHILD element an orphan.
 
 When CHILD has multiple parents then a PARENT element must be supplied.")
-(cl-defgeneric scxmld-make-orphan ((child scxmld-element) &optional parent)
+(cl-defmethod scxmld-make-orphan ((child scxmld-element) &optional parent)
   "Make CHILD element an orphan.
 
 If child has multiple parents then PARENT must be specified"
@@ -260,7 +260,7 @@ The scxml tree parent will always be first."
     (if normal-parent
         (cons normal-parent (oref element diagram-parents))
       (oref element diagram-parents))))
-(cl-defgeneric scxmld-make-orphan ((child scxmld-with-diagram-parents) &optional parent)
+(cl-defmethod scxmld-make-orphan ((child scxmld-with-diagram-parents) &optional parent)
   "Break the connection between CHILD and PARENT"
   (unless parent
     (error "For now, you need to specify a parent"))
@@ -448,9 +448,34 @@ It is never possible to have a synthetic element participate in the real <scxml>
   ;; TODO - low priority but there's probably a better way to do this.
   (unless (scxmld-with-diagram-children-child-p parent)
     (error "Unable to add a synthetic child to this element, it is not able to hold diagram graph only children")))
+(cl-defmethod scxmld-make-orphan :before ((element scxmld-synthetic-element) &optional parent)
+  "If ELEMENT is being orphan from its primary parent, orphan it from the secondary parent as well"
+  (assert parent
+          t
+          ;; maybe in the future the code can be smart enough not to
+          ;; need this, but for now it does.
+          "A parent is required to orphan a synthetic element")
+  (let ((parents (scxmld-parents element)))
+    (assert (member* parent parents :test 'eq)
+            t
+            "Can't orphan an element from a parent it doesn't have")
+    (when (eq (first parents) parent)
+      ;; this is being orphan from the primary parent, drop all other parent relationships
+      (cl-loop for other-parent in (rest parents)
+               do (scxmld-make-orphan element other-parent)))))
+
 (cl-defmethod scxml-root-element ((element scxmld-synthetic-element))
   "The scxml root for a synthetic element will always be nil"
   nil)
+(defun scxmld--get-first-and-primary-non-synthetic-parent (element)
+  (unless (scxmld-synthetic-element-child-p element)
+    (error "Must be a synthetic element"))
+  (cl-labels ((find
+               (element)
+               (if (not (scxmld-synthetic-element-child-p element))
+                   element
+                 (find (first (scxmld-parents element))))))
+    (find element)))
 
 (defclass scxmld-with-synthetic-initial (scxmld-with-diagram-children)
   ()
@@ -466,6 +491,17 @@ It is never possible to have a synthetic element participate in the real <scxml>
 (cl-defgeneric scxmld-get-synth-initial ((element scxmld-element))
   "Return the synthetic-initial element child of ELEMENT if present."
   (error "Not implemented for element of this type"))
+(defun scxmld--clear-initial-attribute (element)
+  "Set the initial= attribute value of ELEMENT to nil with _no_ _protections_.
+
+This is probably something that shouldn't be called often.  I
+  need it for some longer orchestrations."
+  (assert (and (scxmld-with-synthetic-initial-child-p element)
+               (scxml-element-with-initial-child-p element))
+          t
+          "This shouldn't be called unless the element is scxmld-with-synthetic-initial")
+  ;; I feel bad doing this, but...
+  (oset element initial nil))
 
 
 

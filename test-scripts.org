@@ -1,0 +1,8 @@
+* Manual test scripts
+** 
+1. Create new blank document.
+2. By mouse only add one <state> to the scxml, edit the <state> to have a valid id.
+3. By mouse only add an initial= to the scxml.
+4. By mouse only add a transition to the initial=
+5. By mouse only connect the end of that transition to the <state>
+Confirm - in the xml the <scxml> has a proper initial= attribute.

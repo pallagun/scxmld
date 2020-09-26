@@ -13,6 +13,86 @@
 
     (should (scxmld-children stateB))))
 
+(ert-deftest scxmld-synthetic-initial-property-change-test ()
+  ;; initial attributes should be set and unset when a transition has a target
+  ;; change
+  (let ((scxml (scxmld-scxml))
+        (state (scxmld-state :id "myState"))
+        (synth-initial (scxmld-synthetic-initial))
+        (synth-transition (scxmld-synthetic-transition)))
+
+    ;; I should be able to add a state to this scxml element.
+    (scxmld-add-child scxml state)
+    (scxmld-add-child scxml synth-initial)
+    (scxmld-add-child synth-initial synth-transition)
+
+    ;; should start as null
+    (should (null (scxml-get-initial scxml)))
+
+    (scxml-set-target-id synth-transition "myState")
+    (should (equal "myState" (scxml-get-initial scxml)))
+
+    (scxml-set-target-id synth-transition nil)
+    (should (null (scxml-get-initial scxml)))
+
+    (scxml-set-target-id synth-transition "myState")
+    (should (equal "myState" (scxml-get-initial scxml)))))
+
+(ert-deftest scxmld-synthetic-initial-add-remove-transition-test ()
+  ;; initials should be set and unset when a transition beneath
+  ;; the initial element is added or removed and it already has a
+  ;; target set.
+  (let ((scxml (scxmld-scxml))
+        (state (scxmld-state :id "myState"))
+        (synth-initial (scxmld-synthetic-initial))
+        (synth-transition (scxmld-synthetic-transition :target "myState")))
+    
+    ;; I should be able to add a state to this scxml element.
+    (scxmld-add-child scxml state)
+    (scxmld-add-child scxml synth-initial)
+
+    ;; should start as null
+    (should (null (scxml-get-initial scxml)))
+
+    (scxmld-add-child synth-initial synth-transition)
+    (should (equal "myState" (scxml-get-initial scxml)))
+
+    (scxmld-make-orphan synth-transition synth-initial)
+    (should (null (scxml-get-initial scxml)))
+
+    (scxmld-add-child synth-initial synth-transition)
+    (should (equal "myState" (scxml-get-initial scxml))))
+  )
+
+(ert-deftest scxmld-synthetic-initial-add-remove-initial-test ()
+  ;; initials should be set and unset when an initial (with a
+  ;; transition) is added or removed and the transition has a target
+  ;; set.
+  (let ((scxml (scxmld-scxml))
+        (state (scxmld-state :id "myState"))
+        (synth-initial (scxmld-synthetic-initial))
+        (synth-transition (scxmld-synthetic-transition :target "myState")))
+    
+    ;; I should be able to add a state to this scxml element.
+    (scxmld-add-child scxml state)
+    ;; and I'll separately add the synthetic elements together.
+    (scxmld-add-child synth-initial synth-transition)
+
+    ;; should start as null
+    (should (null (scxml-get-initial scxml)))
+
+    (scxmld-add-child scxml synth-initial)
+    (should (equal "myState" (scxml-get-initial scxml)))
+
+    (scxmld-make-orphan synth-initial scxml)
+    (should (null (scxml-get-initial scxml)))
+
+    (scxmld-add-child scxml synth-initial)
+    (should (equal "myState" (scxml-get-initial scxml))))
+  )
+  
+
+
 (ert-deftest scxmld-differential-graph-tests ()
   (let ((scxml (scxmld-scxml))
         (state (scxmld-state :id "myState"))
@@ -131,6 +211,7 @@
       (should (eq synth-initial (first (scxmld-parents synth-transition))))
       (should (member* synth-initial (scxmld-parents synth-transition) :test 'eq))
       (should (member* state (scxmld-parents synth-transition) :test 'eq))
+      
       (should (eq 2 (length (scxmld-get-diagram-parents synth-transition))))
       (should (member* synth-initial (scxmld-parents synth-transition) :test 'eq))
       (should (member* state (scxmld-parents synth-transition) :test 'eq))
