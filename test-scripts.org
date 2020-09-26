@@ -19,7 +19,13 @@ Confirm - No error, but a message should be displayed describing that you can't 
 1. Create new blank document.
 2. By mouse only add one <state> to the scxml, edit the <state> to have a valid id.
 3. By mouse only add one child <state> into the <state> you just created, edit the child <state> to have a valid id.
-3. By mouse only add an initial= to the parent <state>.
-4. By mouse only add a transition to the initial=
-5. By mouse only connect the end of that transition to the child <state>
+4. By mouse only add an initial= to the parent <state>.
+5. By mouse only add a transition to the initial=
+6. By mouse only connect the end of that transition to the child <state>
 Confirm - in the xml the parent <state> has a proper initial= attribute.
+
+** adding a transition by mouse should leave the transition's end point at the mouse's location
+ - dosen't worke
+
+** deleting the target state of a proper synthetic initial+transition should leave the synthetic transition disconnected
+ - doesn't work.
