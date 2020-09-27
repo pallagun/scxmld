@@ -25,7 +25,16 @@ Confirm - No error, but a message should be displayed describing that you can't 
 Confirm - in the xml the parent <state> has a proper initial= attribute.
 
 ** adding a transition by mouse should leave the transition's end point at the mouse's location
- - dosen't worke
+1. Create new blank document.
+2. By mouse only add one <state> to the scxml
+3. By mouse only add a transition to the <state>
+Confirm - When clicking the mouse to add the transition the end point of the transition will be in the same place as the mouse cursor
 
-** deleting the target state of a proper synthetic initial+transition should leave the synthetic transition disconnected
- - doesn't work.
+** deleting the target state of a transition does not fully remove the target state
+ - not working :(
+1. Create a new blank document.
+2. By mouse only add two sibling states in the main <scxml> element and assign them both valid ids.
+3. By mouse only create transition from one state to the other.
+4. Select the state targeted by transition and delete it.
+Confirm - the state delete is entirely gone and the transition doesn't retain a reference to it by displaying the target end of the transition's drawing as being connected.
+Confirm - the transition still retains the value of the target= attribute.

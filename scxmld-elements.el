@@ -454,6 +454,20 @@ Special cases here are: target, event, cond, type"
   (2dd-set-source element nil)
   (2dd-set-target element nil)
   (2dd-clear-inner-path element))
+(cl-defmethod scxmld-make-orphan :after ((element scxmld-transition) &optional parent)
+  "If PARENT represents the target= of ELEMENT, remove the 2dd connector for the target."
+  (unless parent
+    (error "orphaning a transition requires a parent"))
+
+  ;; The case that needs to be handled here is that the transition was
+  ;; separated from it's target.  This can happen if the targeted
+  ;; state is deleted (or made orphan).  In that case we'll have to
+  ;; clean up the 2dd drawing linkage as well.
+  (when (eq parent (2dd-get-target element))
+    ;; the target _was_ removed from the drawing, set the target of
+    ;; this connector to be unlinked
+    (2dd-disconnect (2dd-get-target-connector element))))
+
 (cl-defmethod scxml-set-target-id :before ((element scxmld-transition) target-id)
   "Remove any existing diagram graph connections of ELEMENT due to the old TARGET-ID."
  

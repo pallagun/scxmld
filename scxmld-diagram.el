@@ -149,6 +149,8 @@ made."
          t)
        nil)))
 (cl-defmethod scxmld-modify-drawing ((diagram scxmld-diagram) x-scratch y-scratch)
+  ;; TODO: rename this to scxmld-modify-diagram-drawing and don't make
+  ;; it a generic.
   "Move whatever is selected in DIAGRAM by X-SCRATCH and Y-SCRATCH coordinates."
   (let ((marked-element (scxmld-get-marked diagram)))
     (if marked-element
@@ -498,9 +500,8 @@ a rerender is needed."
         ;; Can't delete the root scxml
         nil
       ;; If the element has a parent, it can be deleted.
-      (scxml-make-orphan element-to-delete)
+      (scxmld-make-orphan element-to-delete parent)
       (scxmld--queue-update-linked-xml diagram parent t)
-
       t)))
 
 ;; XML update handling.

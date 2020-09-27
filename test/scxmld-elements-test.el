@@ -2,7 +2,7 @@
 (require 'ert)
 (require 'scxmld-elements)
 
-(ert-deftest scxmld-silly-test-0001 ()
+(ert-deftest scxmld-transition-unlink-test ()
   (let ((scxml (scxmld-scxml))
         (stateA (scxmld-state :id "A"))
         (stateB (scxmld-state :id "B"))
@@ -11,7 +11,21 @@
     (scxmld-add-child scxml stateB)
     (scxmld-add-child stateA transition)
 
-    (should (scxmld-children stateB))))
+    (should (member* transition (scxmld-children stateA)))
+    (should (member* transition (scxmld-children stateB)))
+    (should (eq stateA (first (scxmld-parents transition))))
+    (should (eq stateB (second (scxmld-parents transition))))
+    (should (eql 2 (length (scxmld-parents transition))))
+
+    (scxmld-make-orphan stateB scxml)
+    
+    (should (member* transition (scxmld-children stateA)))
+    (should (eql 1 (length (scxmld-children stateA))))
+    
+    (should (eq stateA (first (scxmld-parents transition))))
+    (should (eql 1 (length (scxmld-parents transition))))
+))
+
 
 (ert-deftest scxmld-synthetic-initial-property-change-test ()
   ;; initial attributes should be set and unset when a transition has a target

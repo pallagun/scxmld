@@ -100,6 +100,10 @@ This function operates on the scxmld object graph, a superset of
 the scxml graph."
   (scxml-add-child parent child append))
 (cl-defgeneric scxmld-make-orphan ((child scxmld-element) &optional parent)
+  ;; TODO - I really don't think the parent should be optional at this
+  ;; point.  I think the parent, though maybe not required in all
+  ;; situations is reasonable to provide in all situations and I think
+  ;; makes the intent clearer of calling code.
   "Make CHILD element an orphan.
 
 When CHILD has multiple parents then a PARENT element must be supplied.")
@@ -107,13 +111,29 @@ When CHILD has multiple parents then a PARENT element must be supplied.")
   "Make CHILD element an orphan.
 
 If child has multiple parents then PARENT must be specified"
-  (assert (eq parent (scxml-parent parent))
+  (assert (or (null parent)
+              (eq parent (scxml-parent child)))
           t
           "If parent is supplied, it must be correct")
   (assert (>= 1 (length (scxmld-parents child)))
           t
           "If this function is called, there must be only one parent for the child.")
   (scxml-make-orphan child))
+
+(cl-defmethod scxmld-make-orphan :after ((child scxml-element-with-id) &optional parent)
+  "Clean up any transitions referencing CHILD when it is orphan."
+  (unless parent
+    (error "Parent is required when deleting an element with an id"))
+
+  (when-let ((my-id (scxml-get-id child)))
+    ;; If any transition targets this child id it needs to be broken
+    ;; away from CHILD.
+    (scxmld-visit-all parent
+                      (lambda (transition)
+                        (scxmld-make-orphan transition child))
+                      (lambda (element)
+                        (and (scxml-transition-child-p element)
+                             (string-equal my-id (scxml-get-target-id element)))))))
 
 
 (cl-defgeneric scxmld-children ((element scxmld-element))

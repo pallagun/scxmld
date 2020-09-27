@@ -354,20 +354,42 @@ be selected directly."
     (scxmld-diagram-add-child scxmld--diagram marked new-element)
     ;; set the new-element to be the marked element
     (scxmld-set-marked scxmld--diagram new-element)
-    ;; Drop the new element into edit-idx mode.
-    (when (2dd-editable-drawing-class-p new-element)
-      (2dd-set-edit-idx
-       new-element
-       (cond ((2dd-rect-class-p new-element)
-              ;; for a rectangle it's idx #2 (bottom right corner)
-              2)
-             ((2dd-link-class-p new-element)
-              ;; for a link it's idx #1 (not the first idx)
-              1)
-             (t
-              ;; Otherwise we're unsure of what it is so default to zero.
-              0))))
-    (scxmld-rerender t)))
+    ;; maybe you were adding a transition? if so try to put the end of
+    ;; the transition at the cursor
+    
+    
+    ;; rerender with a replot to get the new element on the drawing
+    (scxmld-rerender t)
+    ;; Drop the new element into edit-idx mode if possible
+    (cond ((2dd-rect-class-p new-element)
+           ;; for a rectangle it's idx #2 (bottom right corner)
+           (2dd-set-edit-idx new-element 2))
+          ((2dd-link-class-p new-element)
+           ;; this is a link, set the edit idx to the last valid idx
+           ;; and then move that edit idx to the current pixel
+           ;; 
+           ;; TODO: this seems like a pretty bad way to do this.  I
+           ;; should be able to tell the plotter to lock the end point
+           ;; to some pixel before hand (before I even plot it with
+           ;; the (scxmld-rerender t) call above) and the plotter
+           ;; should figure the rest out for me.
+           (let* ((last-idx (1- (2dd-num-edit-idxs new-element)))
+                  (last-idx-pt (2dd-edit-idx-point new-element last-idx)))
+             (2dd-set-edit-idx new-element last-idx)
+             (scxmld--modify-drawing scxmld--diagram
+                                     new-element
+                                     (2dg-subtract (2dg-centroid selection-area)
+                                                   last-idx-pt))
+             ;; and now because we've done all this we need to
+             ;; rerender _again_ but at least this time we don't have
+             ;; to replot.
+             (scxmld-rerender)
+             ))                         
+          ((2dd-editable-drawing-child-p new-element)
+           ;; I'm not certain what type of drawing this is, but it's
+           ;; editable so select the first edit index
+           (2dd-set-edit-idx new-element 0)))
+    ))
 (defun scxmld-mouse-add-child-to-parallel (selected-element child-type)
   "Add a child <state> or <parallel> to an existing <parallel>"
   (scxmld-set-marked scxmld--diagram
