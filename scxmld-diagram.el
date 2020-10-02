@@ -495,7 +495,7 @@ a rerender is needed."
   (when (eq (scxmld-get-marked diagram) element-to-delete)
     (scxmld-set-marked diagram nil))
 
-  (let ((parent (scxml-parent element-to-delete)))
+  (let ((parent (first (scxmld-parents element-to-delete))))
     (if (null parent)
         ;; Can't delete the root scxml
         nil
@@ -644,8 +644,8 @@ Return non-nil if update completes.  Update may not complete.")
   "Update ELEMENT in DIAGRAM to have UPDATED-GEOMETRY.
 Return non-nil if update completes, nil otherwise.  Update may
 not complete."
-  (let ((parent (first (scxmld-parents element)))
-        (siblings (scxml-siblings element)))
+  (let* ((parent (first (scxmld-parents element)))
+         (siblings (scxmld-siblings element)))
     (2dd-update-plot element
                      updated-geometry
                      #'scxmld-children

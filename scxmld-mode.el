@@ -623,9 +623,9 @@ Note: zooming based on pixel does not yet work."
 (defun scxmld-add-child-to-marked (new-element)
   "Add NEW-ELEMENT to the currently marked element."
   (when
-      (scxmld-add-child scxmld--diagram
-                        (scxmld-get-marked scxmld--diagram)
-                        new-element)
+      (scxmld-diagram-add-child scxmld--diagram
+                                (scxmld-get-marked scxmld--diagram)
+                                new-element)
     (scxmld-rerender t)))
 (defun scxmld-add-child-state-to-marked (id)
   "Add a child state with ID to marked element."
@@ -652,7 +652,9 @@ Note: zooming based on pixel does not yet work."
     (error "An <initial> element must have a <transition> with a valid target."))
   (let* ((initial (scxmld-initial))
          (transition (scxmld-transition :target target-id)))
-    (scxml-add-child initial transition)
+    (scxml-diagram-add-child scxmld--diagram
+                             initial
+                             transition)
     (scxmld-add-child-to-marked initial)))
 
 (defun scxmld-delete-attribute (attribute-name)

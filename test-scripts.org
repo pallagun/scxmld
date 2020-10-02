@@ -38,3 +38,12 @@ Confirm - When clicking the mouse to add the transition the end point of the tra
 4. Select the state targeted by transition and delete it.
 Confirm - the state delete is entirely gone and the transition doesn't retain a reference to it by displaying the target end of the transition's drawing as being connected.
 Confirm - the transition still retains the value of the target= attribute.
+
+** deleting a state with transitions to another fails to remove child transitions
+1. Create a new blank document.
+2. By mouse only add two sibling states in the main <scxml> element and assign them both valid ids.
+3. By mouse only create a transition from the first <state> to the second.
+5. By mouse, select the first <state> element and delete it.
+Confirm - the first state is deleted and its child <transition> element is also deleted.
+
+** doing things by keyboard (adding a transition isn't working)

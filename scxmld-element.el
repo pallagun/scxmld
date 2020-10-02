@@ -118,7 +118,36 @@ If child has multiple parents then PARENT must be specified"
   (assert (>= 1 (length (scxmld-parents child)))
           t
           "If this function is called, there must be only one parent for the child.")
-  (scxml-make-orphan child))
+  (scxml-make-orphan child)
+  ;; at this point, it's possible for the children of CHILD to retain
+  ;; references to elements which are not children of CHILD.  For
+  ;; example, CHILD could have a <transition> as a child element which
+  ;; targets a sibling state (one not being orphan).  Because of this
+  ;; we need to go through all the child elements of CHILD and ensure
+  ;; there are no child or parent relationships to anything outside of
+  ;; the elements which are decendants of CHILD on the scxml tree.
+  (let ((scxml-tree-decendants))
+    (scxml-visit child
+                 (lambda (decendant)
+                   (unless (eq decendant child)
+                     (push decendant scxml-tree-decendants))))
+    (cl-flet ((not-scxml-decendants
+               (element-list)
+               (seq-filter (lambda (some-element)
+                             (not (member* some-element
+                                           scxml-tree-decendants
+                                           :test 'eq)))
+                           element-list)))
+      (cl-loop
+       for element in scxml-tree-decendants
+       when (scxmld-with-diagram-parents-child-p element)
+       do (mapc (lambda (some-parent)
+                  (scxmld-make-orphan element some-parent))
+                (not-scxml-decendants (scxmld-parents element)))
+       when (scxmld-with-diagram-children-child-p element)
+       do (mapc (lambda (some-child)
+                  (scxmld-make-orphan some-child element))
+                (not-scxml-decendants (scxmld-children element)))))))
 
 (cl-defmethod scxmld-make-orphan :after ((child scxml-element-with-id) &optional parent)
   "Clean up any transitions referencing CHILD when it is orphan."
@@ -147,6 +176,14 @@ Defaults to using scxml-children."
 This function assumes there are no extra diagram children and will only return the normal <scxml> tree children."
   ;; (message "scxmld-children (scxmld-element)")
   (scxml-children element))
+
+(cl-defgeneric scxmld-siblings ((element scxmld-element))
+  "Return the \"sibling\" elements of ELEMENT in the scxmld graph.")
+(cl-defmethod scxmld-siblings ((element scxmld-element))
+  "Return the \"sibling\" elements of ELEMENT in the scxmld graph."
+  (let ((parent (first (scxmld-parents element))))
+    (seq-filter (lambda (e) (not (eq e element)))
+                (scxmld-children parent))))
 
 (cl-defgeneric scxmld-parents ((element scxmld-element))
   "Returns the parents of ELEMENT as a list."
