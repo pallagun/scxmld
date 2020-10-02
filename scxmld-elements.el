@@ -15,7 +15,6 @@
   '((t :foreground "yellow"))
   "Edit idx style for any drawing."
   :group 'scxmld-faces)
-
 (defface scxmld-scxml-outline
   '((t :foreground "orange"))
   "scxmld-scxml outlines style."
@@ -50,7 +49,14 @@
   :group 'scxmld-faces)
 
 ;; Drawable elements
-(defclass scxmld-scxml (2dd-rect scxmld-element scxml-scxml scxmld-with-highlight scxmld-with-synthetic-initial)
+;; (defclass scxmld-scxml (2dd-rect scxmld-element scxml-scxml scxmld-with-highlight scxmld-with-synthetic-initial)
+;;   ())
+(defclass scxmld-scxml (2dd-rect
+                        scxmld-with-synthetic-initial
+                        scxmld-with-diagram-children
+                        scxmld-element
+                        scxml-scxml
+                        scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-scxml))
   "Pretty print this <scxml> ELEMENT."
@@ -100,25 +106,51 @@ Special cases here are: name, initial, datamodel and binding."
          (scxml-delete-attrib element attribute-name)))))
 (cl-defmethod scxmld-short-name ((element scxmld-scxml))
   "Return a string with the name of ELEMENT for display."
+  ;; TODO - this can be a one line or sexp??
   (let ((name (scxml-get-name element)))
     (if name
         name
       "?No-Name?")))
-(cl-defmethod scxml-set-initial :after ((scxml scxml-scxml) initial)
-  (message "make a synth element"))
-(cl-defmethod scxmld-children ((scxml scxmld-scxml))
-  "Return the children of the SCXML element."
-  (let ((synth-initial (scxmld-get-synthetic-initial scxml)))
-    (if synth-initial
-        (append (list synth-initial)
-                (cl-call-next-method))
-      (cl-call-next-method))))
+(cl-defmethod scxml-set-initial :after ((scxml scxmld-scxml) initial &optional do-not-validate)
+  "Check a bunch of things???? not sure why this function exists"
+  ;; TODO: why is this here?
+  ;; ensure there's a synth initial and synth transition with the proper
+  ;; configuration, if not, add them.
+
+  ;; real quick, assert you have 1 or zero existing synthetic-initial-elements
+  (assert (<= (length (seq-filter 'scxmld-synthetic-initial-p
+                                  (scxmld-children scxml)))
+              1)
+          t
+          "<scxml> element failed a basic sanity check, it has > 1 synthetic initial")
+  (let* ((synth-initial (first (seq-filter 'scxmld-synthetic-initial-p
+                                            (scxmld-children scxml))))
+         (synth-transition (and synth-initial
+                                (first (scxmld-children synth-initial)))))
+    (assert (or (null synth-transition)
+                (scxmld-synthetic-transition-p synth-transition))
+            t
+            "The first child of a synthetic-initial must always be a synthetic-transition")
+    (if initial
+        ;; You have an initial value set, make sure it's there.
+        (assert (equal (scxml-get-target-id synth-transition)
+                       initial)
+                t
+                "synthetic-transition's target does not match <scxml>'s initial= attribute")
+      ;; you have no initial value set, make sure you have (no
+      ;; initial/transition) or (no target set on your transition)
+      (assert (or (and (null synth-initial)
+                       (null synth-transition))
+                  (null (scxml-get-target-id synth-transition)))
+              t
+              "<scxml> has no initial= attribute, but an active synthetic-transition exists?"))))
+
 (cl-defmethod 2dd-serialize-geometry ((scxml scxmld-scxml))
   "serialize multiple geometry objects if possible?
 
 TODO - this really needs to be refactored."
   (let* ((parent-geo-string (cl-call-next-method))
-         (synth-initial (scxmld-get-synthetic-initial scxml))
+         (synth-initial (scxmld-get-synth-initial scxml))
          (synth-initial-geo-string (when synth-initial
                                      (2dd-serialize-geometry synth-initial)))
          (synth-transition (when synth-initial
@@ -137,11 +169,14 @@ TODO - this really needs to be refactored."
     (if (and parent (scxml-parallel-class-p parent))
         t
       nil)))
+
+
 (defun scxmld--get-targeting-transitions (element)
   "If ELEMENT has an id attribute, return all transition elements which target it.
 
 Returns a list of elements.  May return nil if there are no
 targeting transitions."
+  (error "this has to be reimplemented.... it can't work like this.")
   ;; TODO - setup a single state in an scxml, give the scxml an
   ;; initial attribute that references that state.  Modify the state
   ;; drawing such that the synthetic initial's transition arrow will
@@ -151,15 +186,21 @@ targeting transitions."
     (let ((id (scxml-get-id element)))
       (unless (seq-empty-p id)
         (let ((targeting-transitions))
-          (scxml-visit-all element
-                           (lambda (transition)
-                             (when (equal id (scxml-get-target-id transition))
-                               (push transition targeting-transitions)))
-                           #'scxml-transition-class-p
-                           #'scxmld-children)
+          (scxmld-visit-all element
+                            (lambda (transition)
+                              (when (equal id (scxml-get-target-id transition))
+                                (push transition targeting-transitions)))
+                            (lambda (element)
+                              (or (scxml-transition-class-p element)
+                                  (scxmld-synthetic-transition-p element))))
           targeting-transitions)))))
 
-(defclass scxmld-state (2dd-rect scxmld-element scxml-state scxmld-with-highlight)
+(defclass scxmld-state (2dd-rect
+                        scxmld-with-synthetic-initial
+                        scxmld-with-diagram-children
+                        scxmld-element
+                        scxml-state
+                        scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-state))
   "Pretty print this <state> ELEMENT."
@@ -175,11 +216,11 @@ targeting transitions."
     (when id
       (2dd-set-label instance id))
     instance))
-(cl-defmethod scxmld-children ((state scxmld-state))
-  "Return the children of the STATE element."
-  ;; TODO - I think I can do this with an nconc if the last list is the real children.
-  (append (scxmld--get-targeting-transitions state)
-          (cl-call-next-method)))
+;; (cl-defmethod scxmld-children ((state scxmld-state))
+;;   "Return the children of the STATE element."
+;;   ;; TODO - I think I can do this with an nconc if the last list is the real children.
+;;   (append (scxmld--get-targeting-transitions state)
+;;           (cl-call-next-method)))
 (cl-defmethod 2dd-render ((rect scxmld-state) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect
@@ -219,7 +260,11 @@ Special cases here are: id, initial."
 ;;   "Return a short string identifying STATE."
 ;;   (scxmld--get-short-name-from-id state))
 
-(defclass scxmld-final (2dd-rect scxmld-element scxml-final scxmld-with-highlight)
+(defclass scxmld-final (2dd-rect
+                        scxmld-with-diagram-children
+                        scxmld-element
+                        scxml-final
+                        scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-final))
   "Pretty print this <final> ELEMENT."
@@ -235,11 +280,11 @@ Special cases here are: id, initial."
     (when id
       (2dd-set-label instance id))
     instance))
-(cl-defmethod scxmld-children ((final scxmld-final))
-  "Return the children of the FINIAL element."
-  ;; TODO - I think I can do this with an nconc if the last list is the real children.
-  (append (scxmld--get-targeting-transitions final)
-          (cl-call-next-method)))
+;; (cl-defmethod scxmld-children ((final scxmld-final))
+;;   "Return the children of the FINIAL element."
+;;   ;; TODO - I think I can do this with an nconc if the last list is the real children.
+;;   (append (scxmld--get-targeting-transitions final)
+;;           (cl-call-next-method)))
 (cl-defmethod 2dd-render ((rect scxmld-final) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect
@@ -267,7 +312,11 @@ Special cases here are: id"
            (scxml-put-attrib element attribute-name attribute-value)
          (scxml-delete-attrib element attribute-name)))))
 
-(defclass scxmld-parallel (2dd-division-rect scxmld-element scxml-parallel scxmld-with-highlight)
+(defclass scxmld-parallel (2dd-division-rect
+                           scxmld-with-diagram-children
+                           scxmld-element
+                           scxml-parallel
+                           scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-pprint ((element scxmld-parallel))
   "Pretty print this <parallel> ELEMENT."
@@ -283,11 +332,11 @@ Special cases here are: id"
     (when id
       (2dd-set-label instance id))
     instance))
-(cl-defmethod scxmld-children ((parallel scxmld-parallel))
-  "Return the children of the ELEMENT."
-  ;; TODO - I think I can do this with an nconc if the last list is the real children.
-  (append (scxmld--get-targeting-transitions parallel)
-          (cl-call-next-method)))
+;; (cl-defmethod scxmld-children ((parallel scxmld-parallel))
+;;   "Return the children of the ELEMENT."
+;;   ;; TODO - I think I can do this with an nconc if the last list is the real children.
+;;   (append (scxmld--get-targeting-transitions parallel)
+;;           (cl-call-next-method)))
 (cl-defmethod 2dd-render ((rect scxmld-parallel) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight rect)))
     (cl-call-next-method rect
@@ -318,19 +367,34 @@ Special cases here are: id"
            (scxml-put-attrib element attribute-name attribute-value)
          (scxml-delete-attrib element attribute-name)))))
 
-(defclass scxmld-transition (2dd-link scxmld-element scxml-transition scxmld-with-highlight)
+(defclass scxmld-transition (2dd-link
+                             scxmld-with-diagram-parents
+                             scxmld-element
+                             scxml-transition
+                             scxmld-with-highlight)
   ())
 (cl-defmethod make-instance ((class (subclass scxmld-transition)) &rest slots)
   "Ensure the transition is set up correctly and poperly setup source and target drawing connectors.
 
 Find the :target in SLOTS and properly set the 2dd-link drawing to use it as well"
-  (let ((instance (cl-call-next-method)))
+  ;; something is wrong here.
+  (message "make-instance scxmld-transition")
+  (message "------------- has next method: %s" (cl-next-method-p))
+
+  
+  (let (;; (what (cl-next-method-p))
+        ;; (other (cl-generic-current-method-specializers))
+        (instance (cl-call-next-method)))
     (2dd-set-constraint instance 'free)
     ;; The below line will always fail, when the transition is first
     ;; created it won't yet be a part of the element graph and will
     ;; not be able to find its target.
     ;; (scxmld--transition-update-target-drawing instance (plist-get slots :target))
     instance))
+(defsubst scxmld-transition-class-p (any-object)
+  "Equivalent of (object-of-class-p ANY-OBJECT 'scxml-transition)"
+  (and any-object
+       (object-of-class-p any-object 'scxmld-transition)))
 (cl-defmethod scxmld-pprint ((element scxmld-transition))
   "Pretty print this <transition> ELEMENT."
   (let ((parent (scxml-parent element)))
@@ -342,7 +406,8 @@ Find the :target in SLOTS and properly set the 2dd-link drawing to use it as wel
             (2dd-pprint element))))
 (cl-defmethod 2dd-render ((element scxmld-transition) scratch x-transformer y-transformer viewport &rest style-plist)
   (let ((has-highlight (scxmld-get-highlight element))
-        (parent (scxml-parent element)))
+        (parent (car (scxmld-parents element))))
+    (assert parent t "Unable to determine parent in scxml tree")
     (cl-call-next-method element
                          scratch
                          x-transformer
@@ -376,7 +441,9 @@ Special cases here are: target, event, cond, type"
     (_ (if attribute-value
            (scxml-put-attrib element attribute-name attribute-value)
          (scxml-delete-attrib element attribute-name)))))
-(cl-defmethod scxml-add-child :after ((parent scxmld-element) (transition scxmld-transition) &optional append)
+
+;; this was scxml-add-child :after, but it was changed
+(cl-defmethod scxmld-add-child :after ((parent scxmld-element) (transition scxmld-transition) &optional append)
   "Ensure that the 2dd drawing connections are updated after this add."
   ;; TODO - there should be another update for make-orphan
   (2dd-set-source transition parent)
@@ -387,20 +454,210 @@ Special cases here are: target, event, cond, type"
   (2dd-set-source element nil)
   (2dd-set-target element nil)
   (2dd-clear-inner-path element))
+(cl-defmethod scxmld-make-orphan :after ((element scxmld-transition) &optional parent)
+  "If PARENT represents the target= of ELEMENT, remove the 2dd connector for the target."
+  (unless parent
+    (error "orphaning a transition requires a parent"))
+
+  ;; The case that needs to be handled here is that the transition was
+  ;; separated from it's target.  This can happen if the targeted
+  ;; state is deleted (or made orphan).  In that case we'll have to
+  ;; clean up the 2dd drawing linkage as well.
+  (when (eq parent (2dd-get-target element))
+    ;; the target _was_ removed from the drawing, set the target of
+    ;; this connector to be unlinked
+    (2dd-disconnect (2dd-get-target-connector element))))
+
+(cl-defmethod scxml-set-target-id :before ((element scxmld-transition) target-id)
+  "Remove any existing diagram graph connections of ELEMENT due to the old TARGET-ID."
+ 
+  ;; this should _not_ run for synthetic transitions which are handled
+  ;; a good bit differently.
+  
+  ;; TODO - this is a bit weird to have a parent class
+  ;; (scxmld-transition) know about a child class
+  ;; (scxmld-synthetic-transition).  Maybe it could be phrased in a
+  ;; better way.
+  (unless (scxmld-synthetic-transition-p element)
+    
+    ;; if the transition has a diagram graph parent, orphan it.
+    (let ((diagram-parents (scxmld-get-diagram-parents element)))
+      (assert (<= (length diagram-parents) 1)
+              t
+              "Transitions should not have 2 or more diagram graph parents.")
+      (let ((diagram-parent (first diagram-parents)))
+        (when diagram-parent
+          (scxmld-make-orphan element diagram-parent))))))
 (cl-defmethod scxml-set-target-id :after ((element scxmld-transition) target-id)
-  "When changing the target id of a transition, update the drawing as well."
+  "Update diagram graph and drawings when changing a transition target"
+  (scxmld--update-diagram-graph-after-add
+   ;; (scxml-parent element)
+   (first (scxmld-parents element))
+   element)
   (scxmld--transition-update-target-drawing element target-id))
-(defsubst scxmld--transition-update-target-drawing (transition target-id)
+(defun scxmld--transition-update-target-drawing (transition target-id)
   "Update TRANSITION's drawing to properly reflect a new TARGET-ID"
   (if (and target-id (not (seq-empty-p target-id)))
       (let ((target-transition (scxml-element-find-by-id
-                                (scxml-root-element transition)
+                                (scxmld-root-element transition)
                                 target-id)))
         (when target-transition
           (2dd-set-target transition target-transition)))
     (2dd-set-target transition nil)))
+;; because transitions can have more than one parent, we must handle those.
+(cl-defmethod scxmld-add-child :after ((parent scxmld-element) (child scxmld-element) &optional append)
+  (scxmld--update-diagram-graph-after-add parent child))
 
-(defclass scxmld-initial (2dd-point scxmld-element scxml-initial scxmld-with-highlight)
+(defun scxmld--update-diagram-graph-after-add (parent child)
+  "Call this function after CHILD has been added to PARENT to update the diagram graph"
+  ;; evaluate all elements in the child tree to find if any of them
+  ;; are either transitions (of any type) or elements with a valid id.
+  ;; These are things which could link to another thing or be linked
+  ;; to by another thing.
+  ;;
+  ;; Then, evaluate all elements in the parent tree which are not in
+  ;; the child tree.  Any of them which are transitions (of any type)
+  ;; or elements which have a valid id could be linked.
+  ;;
+  ;; The linkings will only exist between these two groups (though in either direction)
+  ;;
+  (assert (and parent child)
+          t
+          "Parent and child must be valid")
+          
+  (let ((child-tree-elements)
+        (child-tree-elements-by-id)
+        (child-tree-transitions)
+        (parent-tree-elements)
+        (parent-tree-elements-by-id)
+        (parent-tree-transitions))
+    
+    ;; collect all child-tree-elements by id and child-tree transitions
+    (scxmld-visit child
+                  (lambda (element)
+                    (push element child-tree-elements)
+                    (when (scxml-element-with-id-class-p element)
+                      (let ((id (scxml-get-id element)))
+                        (unless (seq-empty-p id)
+                          (setf (alist-get id child-tree-elements-by-id nil nil 'equal)
+                                element))))
+                    (when (scxmld-transition-class-p element)
+                      (push element child-tree-transitions))))
+    ;; collect all parent-tree-elements by id and parent-tree transitions
+    (scxmld-visit-all parent
+                      (lambda (element)
+                        (push element parent-tree-elements)
+                        (when (scxml-element-with-id-class-p element)
+                          (let ((id (scxml-get-id element)))
+                            (unless (seq-empty-p id)
+                              (setf (alist-get id parent-tree-elements-by-id nil nil 'equal)
+                                    element))))
+                        (when (scxmld-transition-class-p element)
+                          (push element parent-tree-transitions)))
+                      (lambda (element)
+                        (not (member* element child-tree-elements :test 'eq))))
+    
+    ;; find any transitions in the child tree which target elements
+    ;; existing in the parent tree and link them up
+    (mapc (lambda (child-tree-transition)
+            (let ((transition-target-id (scxml-get-target-id child-tree-transition)))
+              (unless (seq-empty-p transition-target-id)
+                (when-let ((parent-tree-target (alist-get transition-target-id
+                                                          parent-tree-elements-by-id
+                                                          nil
+                                                          nil
+                                                          'equal)))
+                  ;; found the target of this child-tree transition in
+                  ;; the parent-tree, link it up.
+                  (scxmld-add-diagram-child parent-tree-target child-tree-transition t)
+                  ;; if this child-tree transition is a synthetic one:
+                  (when-let (((scxmld-synthetic-transition-p child-tree-transition))
+                             ;; and there is a parent
+                             (parent (first (scxmld-parents child-tree-transition)))
+                             ;; and there is a grandparent
+                             (grandparent (first (scxmld-parents parent))))
+                    (assert (scxmld-synthetic-initial-p parent)
+                            t
+                            "Detected an invalid graph, primary parent of a synthetic transition should be a synthetic initial")
+                    
+                    (assert (scxml-element-with-initial-child-p grandparent)
+                            t
+                            "Detected an invalid graph, primary grandparent of a synthetic transition should be a scxml-element-with-initial")
+                    (when (member* grandparent parent-tree-elements :test 'eq)
+                      ;; this is a valid synthetic transition and the
+                      ;; attributed element is in the other tree
+                      ;; (parent tree), set the initial attribute
+                      ;; value.
+                      
+                      (assert
+                       ;; This assert will fire if you're adding in
+                       ;; some synthetic elements to a <scxml> or
+                       ;; <state> but the elements your adding
+                       ;; indicate that the <scxml> or <state> should
+                       ;; have an initial= attribute value of
+                       ;; something other than what it already is.
+                       ;; This seems... bad?  Not sure what to do here
+                       (or (null (scxml-get-initial grandparent))
+                           (equal transition-target-id (scxml-get-initial grandparent)))
+                       t
+                       "I don't think this is an error, but it's something")
+                      
+                      (scxml-set-initial grandparent transition-target-id t)))))))
+          child-tree-transitions)
+    ;; find any transitions in the parent tree which direct to
+    ;; elements existing in the child tree and link them up
+    (mapc (lambda (parent-tree-transition)
+            (let ((transition-target-id (scxml-get-target-id parent-tree-transition)))
+              (unless (seq-empty-p transition-target-id)
+                (when-let ((child-tree-target (alist-get transition-target-id
+                                                    child-tree-elements-by-id
+                                                    nil
+                                                    nil
+                                                    'equal)))
+                  ;; found the target of this parent-tree transition
+                  ;; in the child-tree, link it up
+                  (scxmld-add-diagram-child child-tree-target parent-tree-transition t)
+                  ;; if this parent-tree transition is a synthetic one:
+                  (when-let (((scxmld-synthetic-transition-p parent-tree-transition))
+                             ;; and there is a parent
+                             (parent (first (scxmld-parents parent-tree-transition)))
+                             ;; and there is a grandparent
+                             (grandparent (first (scxmld-parents parent))))
+                    (assert (scxmld-synthetic-initial-p parent)
+                            t
+                            "Detected an invalid graph, primary parent of a synthetic transition should be a synthetic initial")
+                    
+                    (assert (scxml-element-with-initial-child-p grandparent)
+                            t
+                            "Detected an invalid graph, primary grandparent of a synthetic transition should be a scxml-element-with-initial")
+                    (when (member* grandparent child-tree-elements :test 'eq)
+                      ;; this is a valid synthetic transition and the
+                      ;; attributed element is in the other tree
+                      ;; (child tree), set the initial attribute
+                      ;; value.
+                      
+                      (assert
+                       ;; This assert will fire if you're adding in
+                       ;; some synthetic elements to a <scxml> or
+                       ;; <state> but the elements your adding
+                       ;; indicate that the <scxml> or <state> should
+                       ;; have an initial= attribute value of
+                       ;; something other than what it already is.
+                       ;; This seems... bad?  Not sure what to do here
+                       (or (null (scxml-get-initial grandparent))
+                           (equal transition-target-id (scxml-get-initial grandparent)))
+                       t
+                       "I don't think this is an error, but it's something")
+                      
+                      (scxml-set-initial grandparent transition-target-id t)))))))
+          parent-tree-transitions)
+    ))
+
+
+(defclass scxmld-initial (2dd-point
+                          scxmld-element
+                          scxml-initial
+                          scxmld-with-highlight)
   ())
 (cl-defmethod scxmld-short-name ((element scxmld-initial))
   "Return a string with the name of ELEMENT for display."
@@ -437,15 +694,83 @@ There are no special cases for <initial> elements."
       (scxml-put-attrib element attribute-name attribute-value)
     (scxml-delete-attrib element attribute-name)))
 
-(defclass scxmld-synthetic-transition (scxmld-transition scxmld-synthetic-element)
+;; TODO - these two elements really need their own graph edges.  Right
+;; now there is a barely sufficient isolation, that's not ideal.
+(defclass scxmld-synthetic-transition (;; scxmld-with-diagram-parents
+                                       ;; nothing
+                                       scxmld-transition
+                                       ;; expected
+                                       scxmld-synthetic-element
+                                       ) ;
   ()
   :documentation "Used to represent a transition from a scxmld-synthetic-initial.")
+(cl-defmethod make-instance ((class (subclass scxmld-synthetic-transition)) &rest slots)
+  "make it"
+  ;; TODO - I don't think I need this anymore
+  (message "make-instance scxmld-synthetic-transition")
+  (cl-call-next-method))
+(cl-defmethod scxml-set-target-id :before ((element scxmld-synthetic-transition) target-id)
+  "Remove the second diagram graph connections before altering the transition target.
 
-(defclass scxmld-synthetic-initial (scxmld-initial scxmld-synthetic-element)
-  ((synth-parent :initform nil
-                 :reader scxmld-get-synth-parent
-                 :writer scxmld-set-synth-parent
-                 :type (or null scxmld-element)))
+Because this is a synthetic transition there will be no real
+scxml tree parents.  However, the diagram graph parents are
+ordered.  The first will always be the true parent of the
+transition and the second will be the target (if it exists)."
+  ;; if the transition has a diagram graph parent, orphan it.
+  (when-let ((anchor-element
+              (scxmld--get-first-and-primary-non-synthetic-parent element)))
+    (assert (scxml-element-with-initial-child-p anchor-element)
+            t
+            "Synthetic transition does not have a reasonable <scxml> or <state> element as a grandparent")
+    (scxmld--clear-initial-attribute anchor-element))
+  (let ((diagram-parents (scxmld-get-diagram-parents element)))
+    (assert (<= 1 (length diagram-parents) 2)
+            t
+            "Transitions should not have 2 or more diagram graph parents.")
+    (when-let ((diagram-parent (second diagram-parents)))
+      (scxmld-make-orphan element diagram-parent))))
+(cl-defmethod scxml-set-target-id :after ((element scxmld-synthetic-transition) target-id)
+  "Update diagram graph and drawings when changing a transition target"
+  (let ((anchor-element
+         (scxmld--get-first-and-primary-non-synthetic-parent element)))
+    (when anchor-element
+      (assert (scxml-element-with-initial-child-p anchor-element)
+              t
+              "Synthetic transition does not have a reasonable <scxml> or <state> element as a grandparent")
+      (scxml-set-initial anchor-element target-id))))
+(cl-defmethod scxmld-make-orphan :before ((element scxmld-synthetic-transition) &optional parent)
+  "Set the initial= attribute to nil on attributed <element> of ELEMENT.
+
+When you have a synthetic transition (a child of a
+synthetic-initial) which represents (graphically) the initial=
+attribute of it's grandparent changes in the synthetic initial
+are reflected in the grandparent.  In this case we're removing
+the synthetic-transition which means there's no longer a valid
+linkage for any synthetic-initial element.  This means the parent
+of the synthetic-initial (the attributed element) has to have its
+initial= attribute wiped out as there's no place to represent it
+graphically.
+
+Huh, this is kinda hard to describe.
+
+TODO: make this discription less terrible."
+
+  (when-let ((parent (first (scxmld-parents element)))
+             (grandparent (first (scxmld-parents parent))))
+    (assert (scxmld-synthetic-initial-p parent)
+            t
+            "Parent of a synthetic transition must be a synthetic initial")
+    (assert (and (scxmld-with-synthetic-initial-child-p grandparent)
+                 (scxml-element-with-initial-child-p grandparent))
+            t
+            "Parent of a synthetic initial must be able to hold a synthetic initial")
+    (scxmld--clear-initial-attribute grandparent)))
+
+(defclass scxmld-synthetic-initial (scxmld-with-diagram-parents
+                                    scxmld-with-diagram-children
+                                    scxmld-initial
+                                    scxmld-synthetic-element)
+  ()
   :documentation "Used to represent an initial attribute, not an element.")
 (cl-defmethod make-instance ((class (subclass scxmld-synthetic-initial)) &rest slots)
   "Ensure the drawing label matches the <final> element's id attribute."
@@ -459,11 +784,48 @@ There are no special cases for <initial> elements."
             "The constraints for this should be setup and should be captive+exclusive")
     (2dd-set-label instance "i")
     instance))
-(cl-defmethod scxml-parent ((element scxmld-synthetic-initial))
-  ;; TODO - For now I'm hijacking the scxml graph to handle this.
-  "Return the parent of ELEMENT."
-  (scxmld-get-synth-parent element))
+(defun scxmld-synthetic-initial-class-p (any-object)
+  "Equivalent of (object-of-class-p ANY-OBJECT 'scxmld-synthetic-initial)"
+  (and any-object
+       (object-of-class-p any-object 'scxmld-synthetic-initial)))
+(cl-defmethod scxmld-get-synth-initial ((element scxmld-with-synthetic-initial))
+  "Return the synthetic-initial element child of ELEMENT if present."
+  (first (seq-filter 'scxmld-synthetic-initial-class-p
+                     (scxmld-get-diagram-children element))))
+(cl-defmethod scxmld-make-orphan :before ((element scxmld-synthetic-initial) &optional parent)
+  "Set the initial= attribute to nil on the parent of ELEMENT.
 
+If you have any <scxml> or <state> element, and it has a properly
+set up synthetic-initial element in the diagram graph, when you
+orphan that element you should also clear out the initial=
+attribute on the <scxml> or <state> as it now does not have any
+representation on the diagram graph."
+
+  (when-let ((parent (first (scxmld-parents element))))
+    (assert (and (scxmld-with-synthetic-initial-child-p parent)
+                 (scxml-element-with-initial-child-p parent))
+            t
+            "Parent of a synthetic initial must be able to hold a synthetic initial")
+    (scxmld--clear-initial-attribute parent))
+
+  ;; also if this element has a child transition then that transition
+  ;; should be made orphan from everything but ELEMENT itself.
+  (assert (<= (length (scxmld-children element)) 1)
+          t
+          "a synthetic-initial should have at most one child element.")
+  (when-let ((child (first (scxmld-children element))))
+    ;; orphan child from every element except ELEMENT
+    (cl-loop for parent in (scxmld-parents child)
+             unless (eq parent element)
+             do (scxmld-make-orphan child parent))))
+
+
+;; (cl-defmethod scxml-parent ((element scxmld-synthetic-initial))
+;;   ;; TODO - For now I'm hijacking the scxml graph to handle this.
+;;   ;; this needs to be fixed because I'm not doing the same for
+;;   ;; scxmld-synthetic-transition
+;;   "Return the parent of ELEMENT."
+;;   (scxmld-get-synth-parent element))
 (cl-defgeneric scxmld-get-synthetic-target-id ((element scxmld-synthetic-initial))
   "Return the current target of ELEMENT's synthetic transition drawings."
   (let ((synth-transitions (scxml-children synth-initial)))

@@ -28,6 +28,12 @@
                       :reader scxmld-get-linked-xml-buffer
                       :writer scxmld-set-linked-xml-buffer
                       :type (or null buffer))
+   (linking-enabled :initform t
+                    :reader scxmld-get-linking-enabled
+                    :writer scxmld-set-linking-enabled
+                    ;; :type boolean?  TODO: how do I do a boolean
+                    ;; type?  there's gotta be some way.
+                    )
    (queued-xml-updates :initform nil
                        :reader scxmld-get-queued-xml-updates
                        :type (or null list))
@@ -36,7 +42,10 @@
                      :writer scxmld-set-queued-xml-timer)
    (possible-connection :initform nil
                         :reader scxmld-get-possible-connection
-                        :writer scxmld-set-possible-connection))
+                        :writer scxmld-set-possible-connection
+                        :documentation "I forgot what this is,
+                        but I think it's for the interactive
+                        drawing connections?"))
   :documentation "An scxml diagram")
 
 (cl-defmethod scxmld-set-marked :before ((this scxmld-diagram) value)
@@ -51,9 +60,10 @@
   "After marking element VALUE, highlight it."
   (when value
     (scxmld-set-highlight value t)
-    (scxmld-log (format "Selected element: %s"
-                        (scxmld-pprint value))
-                'info)))
+    ;; (scxmld-log (format "Selected element: %s"
+    ;;                     (scxmld-pprint value))
+    ;;             'info)
+    ))
 (cl-defmethod scxmld-set-linked-xml-buffer :after ((this scxmld-diagram) value)
   "When setting the buffer, leave a local link variable."
   (with-current-buffer value
@@ -139,6 +149,8 @@ made."
          t)
        nil)))
 (cl-defmethod scxmld-modify-drawing ((diagram scxmld-diagram) x-scratch y-scratch)
+  ;; TODO: rename this to scxmld-modify-diagram-drawing and don't make
+  ;; it a generic.
   "Move whatever is selected in DIAGRAM by X-SCRATCH and Y-SCRATCH coordinates."
   (let ((marked-element (scxmld-get-marked diagram)))
     (if marked-element
@@ -186,7 +198,10 @@ Return non-nil if the diagram should be rerendered."
 (defun scxmld--evaluate-possible-connection (diagram marked-element)
   (scxmld-clear-possible-connection diagram)
 
-  (when (and (scxmld-transition-p marked-element)
+  (when (and (or (scxmld-transition-p marked-element) 
+                 (scxmld-synthetic-transition-p marked-element)
+                 ;; TODO: replace above with scxml-transition-class-p?
+                 )                     
              (seq-empty-p (scxml-get-target-id marked-element))
              (= (1- (2dd-num-edit-idxs marked-element))
                 (2dd-get-edit-idx marked-element)))
@@ -214,10 +229,14 @@ Return non-nil if the diagram should be rerendered."
                            (scxml-final-class-p element)
                            (scxml-parallel-class-p element)))))
       (when targeted-element
-        (scxmld-set-highlight targeted-element t)
-        (scxmld-set-possible-connection diagram targeted-element)
-        (message "do you want to connect to: %s"
-                 (scxmld-pprint targeted-element))))))
+        (if (seq-empty-p (scxml-get-id targeted-element))
+            ;; Unable to connect when there is no valid target=
+            ;; attribute on the targeted-element
+            (scxmld-message "Unable to connect, element has no valid id set")
+          (scxmld-set-highlight targeted-element t)
+          (scxmld-set-possible-connection diagram targeted-element)
+          (scxmld-message (format "Possible connection:: %s"
+                                  (scxmld-pprint targeted-element))))))))
 
 (defsubst scxmld--clear-possible-connection (diagram possible-connection)
   "clear any possible connection drawing info/artifacts."
@@ -258,9 +277,18 @@ a rerender is needed."
           (let* ((marked-element (scxmld-get-marked diagram))
                  (num-edit-idxs (2dd-num-edit-idxs marked-element))
                  (desired-target-point (2dd-edit-idx-point marked-element (1- num-edit-idxs))))
-            (assert (scxmld-transition-p marked-element)
+            (assert (or (scxmld-transition-p marked-element)
+                        (scxmld-synthetic-transition-p marked-element))
                     t
                     "Unable to commit a possible connection with anything other than a transition")
+            (assert (scxml-get-id possible-connection)
+                    t
+                    "Possible connection must have an ID for automatic connection to work")
+            ;; what the hell, why doesn't this assert work? it's ok but the usage lower down is borked?
+            (assert (2dd-connection-point
+                     (2dd-get-target-connector marked-element))
+                    t
+                    "Unable to find the current location of the transition target connector for automatic linking")
             (scxmld-modify-attribute diagram
                                      "target"
                                      (scxml-get-id possible-connection))
@@ -300,6 +328,66 @@ Autoplotting, at present, only works for links/transitions."
         (2dd-simplify marked-element (2dd-get-point-scaling
                                       (2dd-get-viewport diagram)))
       nil)))
+
+(defun scxmld---update-ids-in-transition-targets (marked-element new-id)
+  "Update (and queue xml changes) any transition referencing MARKED-ELEMENT.
+
+NOTE: MARKED-ELEMENT must be of class scxml-element-with-id.
+
+Will find any <transition> type elements which have targets of
+MARKED-ELEMENT and updated them to target the element's new id:
+NEW-ID."
+  (let ((old-id (scxml-get-id marked-element)))
+    (when (not (seq-empty-p old-id))
+      ;; valid old id, if there are any transitions targeting
+      ;; this, they must be updated.
+      (scxml-visit-all
+       marked-element
+       (lambda (transition)
+         (when (equal old-id
+                      (scxml-get-target-id transition))
+           (scxmld-put-attribute transition
+                                 "target"
+                                 new-id)
+           (scxmld--queue-update-linked-xml diagram
+                                            transition)))
+       #'scxml-transition-class-p))))
+
+(defun scxmld---update-synthetic-initial (marked-element new-initial-id)
+  "Update MARKED-ELEMENt's synthetic-intial drawing to match it's attribute values."
+  (let ((current-initial (scxmld-get-synth-initial marked-element)))
+    (cond
+     ;; There is currently no synthetic initial but you should have one.
+     ;; One must be made for you.
+     ((and (null current-initial)
+           (not (seq-empty-p new-initial-id)))
+      (let ((synth-initial (scxmld-synthetic-initial))
+            (_ (message "now making a synth transition"))
+            (synth-transition (scxmld-synthetic-transition)))
+
+        
+        ;; Use normal scxml mechanisms to link transition and initial.
+        (scxml-add-child synth-initial synth-transition)
+        ;; Use scxmld (not scxml) mechanisms to link initial to real parent.
+        (scxmld-set-synth-initial marked-element synth-initial)
+        (scxmld-set-synth-parent synth-initial marked-element)
+        
+        (scxml-set-target-id synth-transition new-initial-id)))
+     
+     ;; There is a current synthetic initial but it needs to be removed.
+     ((and current-initial
+           (seq-empty-p new-initial-id))
+      (scxmld-set-synth-initial marked-element nil))
+     
+     ;; There is a current synthetic initial but it needs to be
+     ;; changed/updated.
+     ((and current-initial
+           (not
+            (equal
+             (scxmld-get-synthetic-target-id current-initial)
+             new-initial-id)))))))
+
+
 (cl-defmethod scxmld-modify-attribute ((diagram scxmld-diagram) (attribute-name string) attribute-value)
   "Modify the ATTRIBUTE-NAME'd attribute to be ATTRIBUTE-VALUE of the marked drawing in DIAGRAM.
 
@@ -317,20 +405,7 @@ a rerender is needed."
       ;; id.
       (when (and (equal "id" attribute-name)
                  (scxml-element-with-id-class-p marked-element))
-        (let ((old-id (scxml-get-id marked-element)))
-          (when (not (seq-empty-p old-id))
-            ;; valid old id, if there are any transitions targeting
-            ;; this, they must be updated.
-            (scxml-visit-all marked-element
-                             (lambda (transition)
-                               (when (equal old-id
-                                            (scxml-get-target-id transition))
-                                 (scxmld-put-attribute transition
-                                                       "target"
-                                                       attribute-value)
-                                 (scxmld--queue-update-linked-xml diagram
-                                                                  transition)))
-                             #'scxml-transition-class-p))))
+        (scxmld---update-ids-in-transition-targets marked-element attribute-value))
 
       ;; Element marked, update the attribute.
       (scxmld-put-attribute marked-element attribute-name attribute-value)
@@ -340,54 +415,39 @@ a rerender is needed."
       ;; or edit any synthetic elements.
       (when (and (equal "initial" attribute-name)
                  (scxmld-with-synthetic-initial-child-p marked-element))
-        (let ((current-initial (scxmld-get-synthetic-initial marked-element)))
-          ;; you may not have any synthetic initial in which case you'll need one.
-          (cond
-           ;; There is currently no synthetic initial but you should have one.
-           ((and (null current-initial)
-                 (not (seq-empty-p attribute-value)))
-            (let ((synth-initial (scxmld-synthetic-initial))
-                  (synth-transition (scxmld-synthetic-transition)))
-              ;; Use normal scxml mechanisms to link transition and initial.
-              (scxml-add-child synth-initial synth-transition)
-              ;; Use scxmld (not scxml) mechanisms to link initial to real parent.
-              (scxmld-set-synthetic-initial marked-element synth-initial)
-              (scxmld-set-synth-parent synth-initial marked-element)
-
-              (scxml-set-target-id synth-transition attribute-value)))
-
-           ;; There is a current synthetic initial but it needs to be removed.
-           ((and current-initial
-                 (seq-empty-p attribute-value))
-            (scxmld-set-synthetic-initial marked-element nil))
-
-           ;; There is a current synthetic initial but it needs to be changed.
-           ((and current-initial
-                 (not (equal (scxmld-get-synthetic-target-id current-initial)
-                             attribute-value)))
-            ))))
+        (scxmld---update-synthetic-initial marked-element attribute-value))
 
       ;; You may have edited a transition such that it needs to be replotted.
-      (when (and (scxmld-transition-p marked-element)
+      (when (and (or (scxmld-transition-p marked-element)
+                     (scxmld-synthetic-transition-p marked-element)
+                     ;; TODO: should there be a
+                     ;; scxmld-transition-class-p to cover both of
+                     ;; theses cases?
+                     )
                  (equal attribute-name "target")
                  (2dd-needs-replot marked-element))
         (2dd-plot marked-element
-                  (2dd-get-inner-canvas (scxml-parent marked-element))
+                  (2dd-get-inner-canvas (first (scxmld-parents marked-element)))
                   (lambda (_) nil)      ;no children for now.
                   (lambda (_) t)        ;preserve whatever you can.
                   scxmld-plot-settings))
 
       (scxmld--queue-update-linked-xml diagram marked-element t)
       t)))
-(cl-defmethod scxmld-add-child ((diagram scxmld-diagram) (parent scxmld-element) (new-child scxmld-element))
+(cl-defmethod scxmld-diagram-add-child ((diagram scxmld-diagram) (parent scxmld-element) (new-child scxmld-element))
   "Add NEW-CHILD to PARENT in DIAGRAM."
   (let ((success))
     ;; (condition-case err
     (progn
 
       ;; when adding an <initial> element, I'll let you add it without
-      ;; a transition at first
-      (unless (scxmld-initial-p new-child)
+      ;; a transition at first.  Additionally, don't validate
+      ;; synthetic elements as they're not actually elements.
+      ;:
+      ;; TODO: sythetic elements should still be validated in *some*
+      ;; way.
+      (unless (or (scxmld-initial-p new-child)
+                  (scxmld-synthetic-element-class-p new-child))
         (scxml-validate-add-child parent new-child))
       ;; if the child comes with a geometry already set, validate that against drawing constraints.
       (when (2dd-geometry new-child)
@@ -395,13 +455,24 @@ a rerender is needed."
         ;; parallel children have their geometry managed for them by the parent paralell.
         (when (scxml-parallel-class-p parent)
           (error "Unable to add a drawing with geometry to a parallel element."))
-        (unless (2dd-validate-constraints new-child parent (scxml-children parent))
+        (unless (2dd-validate-constraints new-child parent (scxmld-children parent))
           (error "Child drawing geometry violates drawing constraints.")))
-      (scxml-add-child parent new-child t)
+
+      ;; (if (scxmld-synthetic-initial-p new-child)
+      ;;     (progn
+      ;;       (scxmld-set-synth-parent new-child parent)
+      ;;       (scxmld-set-synth-initial parent new-child))
+      ;;   (scxml-add-child parent new-child t))
+
+      
+      (scxmld-add-child parent new-child t)
+      ;; (scxml-add-child parent new-child t)
+
+      
       ;; if the new child is a transition (which references
       ;; another state by id) then reset that target id to link
       ;; drawings (note: see (make-instance scxmld-transition) )
-      (when (scxmld-transition-p new-child)
+      (when (scxml-transition-class-p new-child)
         (scxml-set-target-id new-child
                              (scxml-get-target-id new-child)))
       ;; Also, if it's an <initial> element, check to see if it
@@ -424,28 +495,29 @@ a rerender is needed."
   (when (eq (scxmld-get-marked diagram) element-to-delete)
     (scxmld-set-marked diagram nil))
 
-  (let ((parent (scxml-parent element-to-delete)))
+  (let ((parent (first (scxmld-parents element-to-delete))))
     (if (null parent)
         ;; Can't delete the root scxml
         nil
       ;; If the element has a parent, it can be deleted.
-      (scxml-make-orphan element-to-delete)
+      (scxmld-make-orphan element-to-delete parent)
       (scxmld--queue-update-linked-xml diagram parent t)
-
       t)))
 
 ;; XML update handling.
 (cl-defmethod scxmld--queue-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children)
   "Debounce diagram updates to xml."
   (push `(,changed-element ,include-children) (oref diagram queued-xml-updates))
-  (unless (scxmld-get-queued-xml-timer diagram)
-    (scxmld-set-queued-xml-timer
-     diagram
-     (run-with-idle-timer scxmld-diagram-linked-xml-idle
-                          nil
-                          #'scxmld--run-queued-linked-xml-updates
-                          diagram)))
-  )
+  ;; TODO - having a when followed by an unless seems bad :(
+  (when (scxmld-get-linking-enabled diagram)
+    (unless (scxmld-get-queued-xml-timer diagram)
+      (scxmld-set-queued-xml-timer
+       diagram
+       (run-with-idle-timer scxmld-diagram-linked-xml-idle
+                            nil
+                            #'scxmld--run-queued-linked-xml-updates
+                            diagram)))))
+
 (cl-defmethod scxmld--run-queued-linked-xml-updates ((diagram scxmld-diagram))
   "Run all queued linked xml updates."
   ;; first, take care of the timer.
@@ -479,10 +551,16 @@ a rerender is needed."
   (oset diagram queued-xml-updates nil))
 (cl-defmethod scxmld-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-synthetic-element) &optional include-children start-at-point)
   "Update a synthetic elements xml - bounce to the parent, it's that elements job to hold this info."
-  (scxmld-update-linked-xml diagram
-                            (scxml-parent changed-element)
-                            nil
-                            start-at-point))
+  (cl-labels ((first-real-parent
+               (element)
+               (if (scxmld-synthetic-element-class-p element)
+                   (first-real-parent (first
+                                       (scxmld-parents element)))
+                 element)))
+    (scxmld-update-linked-xml diagram
+                              (first-real-parent changed-element)
+                              nil
+                              start-at-point)))
 (cl-defmethod scxmld-update-linked-xml ((diagram scxmld-diagram) (changed-element scxmld-element) &optional include-children start-at-point)
   "Given a DIAGRAM and a newly updated CHANGED-ELEMENT, update the linked xml buffer.
 
@@ -566,8 +644,8 @@ Return non-nil if update completes.  Update may not complete.")
   "Update ELEMENT in DIAGRAM to have UPDATED-GEOMETRY.
 Return non-nil if update completes, nil otherwise.  Update may
 not complete."
-  (let ((parent (scxml-parent element))
-        (siblings (scxml-siblings element)))
+  (let* ((parent (first (scxmld-parents element)))
+         (siblings (scxmld-siblings element)))
     (2dd-update-plot element
                      updated-geometry
                      #'scxmld-children

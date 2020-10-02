@@ -18,6 +18,10 @@
   (setq scxmld---debug (not scxmld---debug))
   (message "SCXMLd debuger mode set to %s" scxmld---debug))
 
+(defvar scxmld--debug-var nil
+  "when you debug an element this var will be set to that element for further inspection")
+  
+
 (defvar scxmld-mode-map
   (let ((map (make-keymap)))
     (define-key map (kbd "C-SPC") 'scxmld-mark-at-point)
@@ -30,6 +34,7 @@
     (define-key map (kbd "d d") 'scxmld-drawing-debug)
     (define-key map (kbd "d a") 'scxmld-drawing-autoplot)
 
+    (define-key map (kbd "l t") 'scxmld-linking-toggle)
 
     (define-key map (kbd "M-f") 'scxmld-modify-right)
     (define-key map (kbd "M-b") 'scxmld-modify-left)
@@ -295,11 +300,18 @@ be selected directly."
         (when valid-children
           (setq add-children-menu
                 (cons "Add child:"
-                      (mapcar (lambda (child-type)
-                                (cons (format "<%s>" child-type)
-                                      `(scxmld-mouse-begin-add-new ,selection-element
-                                                                   ,child-type)))
-                              valid-children))))))
+                      (append
+                       (if (scxml-element-with-initial-class-p selection-element)
+                           (list
+                            (cons "intial="
+                                  `(scxmld-mouse-begin-add-new ,selection-element
+                                                               synthetic-initial)))
+                         nil)
+                       (mapcar (lambda (child-type)
+                                 (cons (format "<%s>" child-type)
+                                       `(scxmld-mouse-begin-add-new ,selection-element
+                                                                    ,child-type)))
+                               valid-children)))))))
 
     (let* ((valid-menus (seq-filter 'identity `(,edit-attribute-menu
                                                 ,add-children-menu
@@ -323,9 +335,13 @@ be selected directly."
                                 (scxmld-mouse-continue-add-new type clicked-pixel))))))
 (defun scxmld-mouse-continue-add-new (type pixel-location)
   ;; TODO - should I have a factory for these?
+  (2dd-mouse-clear-override 'down-mouse-1)
   (let* ((marked (scxmld-get-marked scxmld--diagram))
          (selection-area (2dd-get-coord (2dd-get-viewport scxmld--diagram)
                                         pixel-location))
+         (type (if (scxmld-synthetic-element-class-p marked)
+                   (format "synthetic-%s" type)
+                 type))
          (constructor (intern (format "scxmld-%s" type)))
          (new-element (funcall constructor)))
     (unless marked
@@ -335,14 +351,45 @@ be selected directly."
     ;; TODO - it may not be possible to set from a selection-area.
     (2dd-set-geometry new-element selection-area)
     ;; add the child to the currently marked element.
-    (scxmld-add-child scxmld--diagram marked new-element)
+    (scxmld-diagram-add-child scxmld--diagram marked new-element)
     ;; set the new-element to be the marked element
     (scxmld-set-marked scxmld--diagram new-element)
-    ;; Drop the new element into edit-idx mode.
-    (when (2dd-editable-drawing-class-p new-element)
-      ;; TODO - this may not be a rectangle at some point.
-      (2dd-set-edit-idx new-element 2))
-    (scxmld-rerender t)))
+    ;; maybe you were adding a transition? if so try to put the end of
+    ;; the transition at the cursor
+    
+    
+    ;; rerender with a replot to get the new element on the drawing
+    (scxmld-rerender t)
+    ;; Drop the new element into edit-idx mode if possible
+    (cond ((2dd-rect-class-p new-element)
+           ;; for a rectangle it's idx #2 (bottom right corner)
+           (2dd-set-edit-idx new-element 2))
+          ((2dd-link-class-p new-element)
+           ;; this is a link, set the edit idx to the last valid idx
+           ;; and then move that edit idx to the current pixel
+           ;; 
+           ;; TODO: this seems like a pretty bad way to do this.  I
+           ;; should be able to tell the plotter to lock the end point
+           ;; to some pixel before hand (before I even plot it with
+           ;; the (scxmld-rerender t) call above) and the plotter
+           ;; should figure the rest out for me.
+           (let* ((last-idx (1- (2dd-num-edit-idxs new-element)))
+                  (last-idx-pt (2dd-edit-idx-point new-element last-idx)))
+             (2dd-set-edit-idx new-element last-idx)
+             (scxmld--modify-drawing scxmld--diagram
+                                     new-element
+                                     (2dg-subtract (2dg-centroid selection-area)
+                                                   last-idx-pt))
+             ;; and now because we've done all this we need to
+             ;; rerender _again_ but at least this time we don't have
+             ;; to replot.
+             (scxmld-rerender)
+             ))                         
+          ((2dd-editable-drawing-child-p new-element)
+           ;; I'm not certain what type of drawing this is, but it's
+           ;; editable so select the first edit index
+           (2dd-set-edit-idx new-element 0)))
+    ))
 (defun scxmld-mouse-add-child-to-parallel (selected-element child-type)
   "Add a child <state> or <parallel> to an existing <parallel>"
   (scxmld-set-marked scxmld--diagram
@@ -474,10 +521,19 @@ If there is more than one thing there and one of them is already marked, leave i
   (interactive)
   (when (scxmld-simplify-drawing scxmld--diagram)
     (scxmld-rerender)))
+(defun scxmld-linking-toggle ()
+  "Toggle xml document linking"
+  (interactive)
+  (let* ((currently-enabled (scxmld-get-linking-enabled scxmld--diagram))
+         (new-enabled (not currently-enabled)))
+    (scxmld-set-linking-enabled scxmld--diagram new-enabled)
+    (message ("Document linking set to %s" new-enabled))))
+    
 (defun scxmld-drawing-debug ()
   "Whatever drawing is marked, pop up a buffer with debug information."
   (interactive)
   (let ((marked (scxmld-get-marked scxmld--diagram)))
+    (setq scxmld--debug-var marked)
     (message (prin1-to-string marked))))
 (defun scxmld-drawing-autoplot ()
   "Autoplot the marked drawing if possible."
@@ -567,9 +623,9 @@ Note: zooming based on pixel does not yet work."
 (defun scxmld-add-child-to-marked (new-element)
   "Add NEW-ELEMENT to the currently marked element."
   (when
-      (scxmld-add-child scxmld--diagram
-                        (scxmld-get-marked scxmld--diagram)
-                        new-element)
+      (scxmld-diagram-add-child scxmld--diagram
+                                (scxmld-get-marked scxmld--diagram)
+                                new-element)
     (scxmld-rerender t)))
 (defun scxmld-add-child-state-to-marked (id)
   "Add a child state with ID to marked element."
@@ -581,17 +637,24 @@ Note: zooming based on pixel does not yet work."
   (scxmld-add-child-to-marked (scxmld-final :id id)))
 (defun scxmld-add-child-transition-to-marked (target-id)
   (interactive "sNew <transition> target: ")
-  (scxmld-add-child-to-marked
-   (scxmld-transition :target (if (seq-empty-p (string-trim target-id))
-                                  nil
-                                target-id))))
+  (let* ((marked-element (scxmld-get-marked scxmld--diagram))
+         (child-factory (if (scxmld-synthetic-element-child-p marked-element)
+                            'scxmld-synthetic-transition
+                          'scxmld-transition)))
+    (scxmld-add-child-to-marked
+     (funcall child-factory
+              :target (if (seq-empty-p (string-trim target-id))
+                          nil
+                        target-id)))))
 (defun scxmld-add-child-initial-to-marked (target-id)
   (interactive "sNew <initial> transition target: ")
   (when (seq-empty-p target-id)
     (error "An <initial> element must have a <transition> with a valid target."))
   (let* ((initial (scxmld-initial))
          (transition (scxmld-transition :target target-id)))
-    (scxml-add-child initial transition)
+    (scxml-diagram-add-child scxmld--diagram
+                             initial
+                             transition)
     (scxmld-add-child-to-marked initial)))
 
 (defun scxmld-delete-attribute (attribute-name)
@@ -638,6 +701,29 @@ Note: zooming based on pixel does not yet work."
   (scxmld-rerender))
 
 
+
+(defun eieio-object-to-alist (object &optional depth)
+  "Given some object, spit out json for it"
+  (unless depth
+    (setq depth 0))
+  (if (not (eieio-object-p object))
+      ;; not a class, just return it.
+      object
+    ;; it's a class, pick it apart.
+    (let* ((class (eieio-object-class object))
+           (class-name (eieio-class-name class))
+           (class-slots (eieio-class-slots class))
+           (slot-vals))
+      (cl-loop for slot in class-slots
+               for name = (cl-struct-slot-value 'cl-slot-descriptor 'name slot)
+               for raw-val = (if (slot-boundp object name)
+                                 (slot-value object name)
+                               '*UNBOUND-SLOT*)
+               for val = (if (> depth 0)
+                             (eieio-object-to-alist raw-val (1- depth))
+                           raw-val)
+               do (push (cons name val) slot-vals)
+               finally return slot-vals))))
 
 
 
