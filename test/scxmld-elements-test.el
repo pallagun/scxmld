@@ -26,7 +26,6 @@
     (should (eql 1 (length (scxmld-parents transition))))
 ))
 
-
 (ert-deftest scxmld-synthetic-initial-property-change-test ()
   ;; initial attributes should be set and unset when a transition has a target
   ;; change
@@ -105,8 +104,6 @@
     (should (equal "myState" (scxml-get-initial scxml))))
   )
   
-
-
 (ert-deftest scxmld-differential-graph-tests ()
   (let ((scxml (scxmld-scxml))
         (state (scxmld-state :id "myState"))
