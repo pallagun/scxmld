@@ -818,14 +818,6 @@ representation on the diagram graph."
     (cl-loop for parent in (scxmld-parents child)
              unless (eq parent element)
              do (scxmld-make-orphan child parent))))
-
-
-;; (cl-defmethod scxml-parent ((element scxmld-synthetic-initial))
-;;   ;; TODO - For now I'm hijacking the scxml graph to handle this.
-;;   ;; this needs to be fixed because I'm not doing the same for
-;;   ;; scxmld-synthetic-transition
-;;   "Return the parent of ELEMENT."
-;;   (scxmld-get-synth-parent element))
 (cl-defgeneric scxmld-get-synthetic-target-id ((element scxmld-synthetic-initial))
   "Return the current target of ELEMENT's synthetic transition drawings."
   (let ((synth-transitions (scxml-children synth-initial)))
@@ -837,6 +829,93 @@ representation on the diagram graph."
             "A synthetic initial element must have a child which is a transition")
     (scxml-get-target-id (first synth-transitions))))
 
+
+;; serialization changes
+(defun scxmld--element-factory (type attrib-alist &optional skip-slots)
+  "Build scxmld elements by TYPE and ATTRIB-ALIST.
+
+The elements will be built without scxml tree children but _with_
+scxmld graph children when applicable.
+
+Optionally, if the slot name is in skip-slots (as a symbol) then
+forcefully put it in t he element's attribute hash table, not in
+the slot (even if a proper slot is found.
+
+Does not build recursively."
+  (unless (symbolp type)
+    (error "Type must be a symbol"))
+  (let* ((type-string (symbol-name type))
+         (class-name (format "scxml-%s" type-string))
+         (drawing-class-name (format "scxmld-%s" type-string))
+         (class (intern-soft class-name))
+         (drawing-class (intern-soft drawing-class-name))
+         (slots (eieio-class-slots class))
+         (slot-names (mapcar (lambda (slot)
+                               ;; TODO - probably shouldn't use a cl--* function.
+                               (let ((slot-symbol (cl--slot-descriptor-name slot)))
+                                 (symbol-name slot-symbol)))
+                             slots))
+         (attribute-slots (seq-filter
+                           (lambda (slot-name)
+                             (not (eq (aref slot-name 0) (aref "_" 0))))
+                           slot-names))
+         (attribute-slot-symbols (mapcar 'intern attribute-slots)))
+    ;; TODO - this will only work if the slot name and the eieio
+    ;; initarg are the same.
+    ;; split up everything in attrib-list
+    (let ((constructor-params nil)
+          (attribute-params nil))
+      (cl-loop for cell in attrib-alist
+               for attrib-name-symbol = (car cell)
+               when (and (memq attrib-name-symbol attribute-slot-symbols)
+                         (not (memq attrib-name-symbol skip-slots)))
+               do (let ((initarg-sym (intern
+                                      (format ":%s"
+                                              (symbol-name attrib-name-symbol)))))
+                    (setq constructor-params
+                          (plist-put constructor-params initarg-sym (cdr cell))))
+               else
+               do (push cell attribute-params))
+      (let ((element (apply drawing-class constructor-params)))
+        (mapc (lambda (cell)
+                (scxml-put-attrib element (car cell) (cdr cell)))
+              attribute-params)
+      element))))
+(defun scxmld-reconstitute-drawings (root-element canvas)
+  "Rebuild any 2dd drawing properties in root-elemenet based off saved attributes
+
+This should happen in 3 passes:
+
+Rectangles
+Points
+Links
+Anything that's synthetic."
+  (unless (scxmld-element-child-p root-element)
+    (error "root element should be an scxmld-element instance"))
+  (unless (2dd-canvas-p canvas)
+    (error "canvas must be a 2dd-canvas"))
+  (cl-flet ((reconstitute-rect
+             (rectangle canvas)
+             (when-let ((drawing-info-string (scxml-get-attrib
+                                              rectangle
+                                              (intern scxmld-drawing-attribute)))
+                        (drawing-info (car (read-from-string drawing-info-string))))
+               (2dd-set-from rectangle drawing-info canvas))))
+    ;; establish the root element's drawing first with the passed in canvas
+    (assert (2dd-rect-child-p root-element)
+            t
+            "The root element has to be a rectangle for now")
+    (reconstitute-rect root-element canvas)
+    (scxml-visit root-element
+                 (lambda (rect)
+                   (reconstitute-rect rect
+                                      (2dd-get-inner-canvas (scxml-parent rect))))
+                 (lambda (element)
+                   (and (2dd-rect-child-p element)
+                        (not (eq element root-element)))))
+    root-element))
+  
+  
 
 
 

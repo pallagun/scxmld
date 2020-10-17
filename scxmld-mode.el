@@ -20,7 +20,6 @@
 
 (defvar scxmld--debug-var nil
   "when you debug an element this var will be set to that element for further inspection")
-  
 
 (defvar scxmld-mode-map
   (let ((map (make-keymap)))
@@ -76,6 +75,7 @@
 
     map)
   "Keymap for scxml-diagram major mode")
+
 (defun scxmld-mode ()
   "Major mode for editing scxml diagrams"
   (interactive)
@@ -102,6 +102,19 @@
           (mouse-5 . scxmld-mouse-zoom-out)
           (error . scxmld-error))))
 
+(defun scxmld ()
+  "Entry point to scxmld.
+
+- If you're looking at an xml buffer and that buffer seems to be
+  xml with a top level <scxml> element it will open up diagram
+  mode.
+
+- Otherwise it will prompt you to open up an xml file containing
+  scxml"
+  
+  
+  )
+  
 (defun scxmld-new-empty-diagram (name)
   "Make a brand new drawing of an empty <scxml> with NAME."
   (interactive "s<scxml> name: ")
@@ -113,6 +126,8 @@
                                   :viewport viewport))
          (buffer (get-buffer-create (format "*SCXML:%s*" name)))
          (link-buffer (get-buffer-create (format "*scxml*%s.xml" name))))
+
+    ;; setup the basic editor layout, diagram on left and xml on the right.
     (delete-other-windows)
     (switch-to-buffer link-buffer)
     (split-window-right)
@@ -124,7 +139,7 @@
     (scxmld-set-linked-xml-buffer diagram link-buffer)
     (scxmld-initialize-linked-xml-buffer diagram)))
 
-(defun scxmld-write-diagram (&optional buffer-or-buffer-name)
+(defun scxmld-write-xml (&optional buffer-or-buffer-name)
   "Write out the <scxml> of the current diagram to a new buffer."
   (interactive)
   (let ((root-element (2dd-get-root scxmld--diagram))
@@ -133,6 +148,11 @@
     (delete-region (point-min) (point-max))
     (xml-mode)
     (insert (scxml-xml-string root-element))))
+(defun scxmld-read-xml (&optional buffer-or-buffer-name)
+  "Read the <scxml> contents of an xml buffer and setup a diagram sessios."
+  (interactive)
+  
+  )
 
 (cl-defmethod scxmld-goto-point ((point 2dg-point))
   "Move cursor to where POINT is."
