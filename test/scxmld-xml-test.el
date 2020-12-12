@@ -160,7 +160,6 @@ tag-fn will be called from the start of the buffer to get the proper tag."
                     (scxmld---all-combinations attributes))))
           cases)))
 
-
 (defun scxmld--apply-delete (xml-string tag-fn)
   "Put xml-string into a buffer, run scxmld-update-attributes on it.
 
@@ -205,8 +204,5 @@ tag-fn will be called from the start of the buffer to get the proper tag."
                                                        tag)))
                              expected))))
           cases)))
-
-
-
 
 (provide 'scxmld-xml-test)
