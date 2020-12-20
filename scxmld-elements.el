@@ -838,7 +838,7 @@ The elements will be built without scxml tree children but _with_
 scxmld graph children when applicable.
 
 Optionally, if the slot name is in skip-slots (as a symbol) then
-forcefully put it in t he element's attribute hash table, not in
+forcefully put it in the element's attribute hash table, not in
 the slot (even if a proper slot is found.
 
 Does not build recursively."
@@ -896,10 +896,10 @@ Anything that's synthetic."
     (error "canvas must be a 2dd-canvas"))
   (cl-flet ((reconstitute-rect
              (rectangle canvas)
-             (when-let ((drawing-info-string (scxml-get-attrib
-                                              rectangle
-                                              (intern scxmld-drawing-attribute)))
-                        (drawing-info (car (read-from-string drawing-info-string))))
+             (when-let ((drawing-info (scxml-get-attrib
+                                       rectangle
+                                       (intern scxmld-drawing-attribute))))
+                        ;; (drawing-info (car (read-from-string drawing-info-string))))
                (2dd-set-from rectangle drawing-info canvas))))
     ;; establish the root element's drawing first with the passed in canvas
     (assert (2dd-rect-child-p root-element)
